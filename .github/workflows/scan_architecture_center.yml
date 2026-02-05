@@ -28,6 +28,10 @@ jobs:
         run: |
           python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json --debug
 
+      - name: Convert debug JSON to CSVs
+        run: |
+          python scripts/convert_debug_to_csv.py --input scan-debug.json --outdir
+
       - name: Convert to Excel/CSVs
         run: |
           python scripts/convert_scan_results_to_excel.py --input scan-results.json --outdir .
@@ -48,6 +52,14 @@ jobs:
         with:
           name: scan-debug
           path: scan-debug.json
+
+      - name: Upload debug CSVs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-debug-csv
+          path: |
+            scan-debug_counts.csv
+            scan-debug_skipped_sample.csv
 
       - name: Job summary (top 25)
         run: |
