@@ -1,24 +1,33 @@
-# Azure Architecture Center
+# Architecture Center YAML Criteria Scanner (Fork-friendly) — v3
 
-Microsoft patterns & practices
+This adds a GitHub Actions workflow + Python scanner to your fork of `MicrosoftDocs/architecture-center`.
 
-<https://azure.com/architecture>
+## Criteria (ALL must be true)
 
-<!-- docutune:disable -->
+1. `docs/**/*.yml` contains a `content` string with an INCLUDE directive referencing a `.md` file (e.g., `[!INCLUDE [] (file.md)]`).
+2. The included `.md` contains at least one `.svg` reference.
+3. The included `.md` contains at least one link matching **either**:
+   - `https://azure.com/e/...`
+   - `https://azure.microsoft.com/pricing/calculator/?shared-estimate=...`
 
-## Legal Notices
+Architecture Center `.yml` files commonly include `metadata.title`, `metadata.description`, `azureCategories`, and a `content: |` block with an include reference, as seen in examples like `guidance.yml` where `content: | [!include [] (guidance-content.md)]`. citeturn26search138turn26search142turn26search143
 
-Microsoft and any contributors grant you a license to the Microsoft documentation and other content
-in this repository under the [Creative Commons Attribution 4.0 International Public License](https://creativecommons.org/licenses/by/4.0/legalcode),
-see the [LICENSE](LICENSE) file, and grant you a license to any code in the repository under the [MIT License](https://opensource.org/licenses/MIT), see the
-[LICENSE-CODE](LICENSE-CODE) file.
+## Run
 
-Microsoft, Windows, Microsoft Azure and/or other Microsoft products and services referenced in the documentation
-may be either trademarks or registered trademarks of Microsoft in the United States and/or other countries.
-The licenses for this project do not grant you rights to use any Microsoft names, logos, or trademarks.
-Microsoft's general trademark guidelines can be found at <https://go.microsoft.com/fwlink/?LinkID=254653>.
+In your fork:
+1. Go to **Actions**
+2. Select **Scan Architecture Center YAML Criteria**
+3. Click **Run workflow**
+4. Download the artifact **scan-results** → `scan-results.json`
 
-Privacy information can be found at <https://privacy.microsoft.com>.
+## Output fields (per item)
 
-Microsoft and any contributors reserve all others rights, whether under their respective copyrights, patents,
-or trademarks, whether by implication, estoppel or otherwise.
+- `title`, `description`, `azureCategories`
+- `yml_url` (clickable Learn URL, best-effort) + `yml_github_url` (source) + `yml_path`
+- `include_md_path` + `include_md_github_url`
+- `svg_paths`, `svg_download_urls`, `svg_exists_in_repo`
+- `azure_experience_links` (ALL matches)
+- `shared_estimate_links` (ALL matches)
+- `all_matching_links` (combined, deduped)
+
+> Note: `yml_url` is derived from the repo path using a consistent mapping pattern. If any page doesn’t resolve due to redirects or special routing, you still have `yml_github_url` as a fallback.
