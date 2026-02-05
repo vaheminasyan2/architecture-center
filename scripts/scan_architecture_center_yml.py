@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""Architecture Center YAML Criteria Scanner (v3.3.1)
+"""Architecture Center YAML Criteria Scanner (v3.3.2)
 
-Includes v3.3 functionality + debug artifacts.
+Update in this version:
+- Image criteria now applies ONLY to the `## Architecture` section of the included markdown.
+  This excludes thumbnails/other images elsewhere in the doc.
+- Debug counters now include:
+  - md_has_architecture_section
+  - md_has_arch_images_any
+  - md_has_links_any
+  - md_arch_images_only
+  - md_links_only
+  - md_images_and_links
 
 Criteria (ALL must be true):
 1) docs/**/*.yml contains a `content` string with an INCLUDE directive referencing a `.md` file.
-2) Included `.md` contains at least one diagram reference with extension in {svg,png,jpg,jpeg}.
+2) Included `.md` has a `## Architecture` section containing at least one diagram reference with extension in {svg,png,jpg,jpeg}.
 3) Included `.md` contains at least one link matching either:
    - https://azure.com/e/...
    - https://azure.microsoft.com/pricing/calculator/...
@@ -29,6 +38,9 @@ AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
 PRICING_CALC_ANY_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/[^\s\)\]\"']*", re.IGNORECASE)
 SHARED_ESTIMATE_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/\?shared-estimate=[^\s\)\]\"']+", re.IGNORECASE)
 IMAGE_RE = re.compile(r"[^\s\)\]\"']+\.(?:svg|png|jpg|jpeg)", re.IGNORECASE)
+
+ARCH_H2_RE = re.compile(r"(?im)^##\s+Architecture\b.*$")
+H2_RE = re.compile(r"(?im)^##\s+[^\n]+$")
 
 
 def load_yaml(path: Path):
@@ -84,6 +96,18 @@ def resolve_repo_rel(base_dir: Path, ref: str, repo_root: Path):
         return None
 
 
+def extract_architecture_section(md_text: str):
+    """Return the text inside the `## Architecture` section (H2), or '' if missing."""
+    m = ARCH_H2_RE.search(md_text)
+    if not m:
+        return ''
+    start = m.end()
+    # Find next H2 after this heading
+    m2 = H2_RE.search(md_text, start)
+    end = m2.start() if m2 else len(md_text)
+    return md_text[start:end]
+
+
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
     docs_path = repo_root / docs_root
 
@@ -93,10 +117,15 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'has_content': 0,
         'has_include': 0,
         'include_md_exists': 0,
-        'md_has_images': 0,
-        'md_has_links': 0,
+        'md_has_architecture_section': 0,
+        'md_has_arch_images_any': 0,
+        'md_has_links_any': 0,
+        'md_arch_images_only': 0,
+        'md_links_only': 0,
+        'md_images_and_links': 0,
         'matched': 0,
     }
+
     skipped = []
     results = []
 
@@ -152,30 +181,56 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         md_text = md_file.read_text(encoding='utf-8', errors='ignore')
 
+        # Link detection (whole doc)
         azure_experience_links = sorted(set(AZURE_E_RE.findall(md_text)))
         pricing_calculator_links = sorted(set(PRICING_CALC_ANY_RE.findall(md_text)))
         shared_estimate_links = sorted(set(SHARED_ESTIMATE_RE.findall(md_text)))
+        has_links_any = bool(azure_experience_links or pricing_calculator_links)
+        if has_links_any:
+            counts['md_has_links_any'] += 1
 
-        if not (azure_experience_links or pricing_calculator_links):
+        # Architecture section image detection
+        arch_section = extract_architecture_section(md_text)
+        has_arch_section = bool(arch_section.strip())
+        if has_arch_section:
+            counts['md_has_architecture_section'] += 1
+
+        arch_image_refs_raw = sorted(set(IMAGE_RE.findall(arch_section))) if has_arch_section else []
+        has_arch_images_any = bool(arch_image_refs_raw)
+        if has_arch_images_any:
+            counts['md_has_arch_images_any'] += 1
+
+        # Debug-only cross counts (A: images-only means *arch images present* but *no qualifying links*)
+        if has_arch_images_any and not has_links_any:
+            counts['md_arch_images_only'] += 1
+        elif has_links_any and not has_arch_images_any:
+            counts['md_links_only'] += 1
+        elif has_links_any and has_arch_images_any:
+            counts['md_images_and_links'] += 1
+
+        # Apply criteria in requested order
+        if not has_links_any:
             if debug:
                 skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_matching_links', 'include_md_path': include_md_rel})
             continue
-        counts['md_has_links'] += 1
 
-        image_refs_raw = sorted(set(IMAGE_RE.findall(md_text)))
-        if not image_refs_raw:
+        if not has_arch_section:
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_image_refs', 'include_md_path': include_md_rel})
+                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_architecture_section', 'include_md_path': include_md_rel})
             continue
-        counts['md_has_images'] += 1
 
+        if not has_arch_images_any:
+            if debug:
+                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_architecture_images', 'include_md_path': include_md_rel})
+            continue
+
+        # Build image outputs
         image_paths, image_download_urls, image_exists, image_formats = [], [], [], []
         svg_paths, svg_download_urls, svg_exists = [], [], []
 
-        for img_ref in image_refs_raw:
+        for img_ref in arch_image_refs_raw:
             img_ref = clean_ref(img_ref)
             fmt = img_ref.split('.')[-1].lower() if '.' in img_ref else None
-
             img_rel = resolve_repo_rel(md_file.parent, img_ref, repo_root)
             if img_rel is None:
                 img_rel = img_ref.strip().lstrip('/')
@@ -203,6 +258,7 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'yml_path': repo_rel_yml,
             'include_md_path': include_md_rel,
             'include_md_github_url': make_github_blob_url(repo_slug, branch, include_md_rel),
+            'architecture_section_only': True,
             'image_paths': image_paths,
             'image_download_urls': image_download_urls,
             'image_exists_in_repo': image_exists,
@@ -226,7 +282,7 @@ def main():
     ap.add_argument('--branch', default='main')
     ap.add_argument('--docs-root', default='docs')
     ap.add_argument('--output', default='scan-results.json')
-    ap.add_argument('--debug', action='store_true', help='Write scan-debug.json with counters + skipped reasons')
+    ap.add_argument('--debug', action='store_true', help='Write scan-debug.json with counters + sample skipped reasons')
     args = ap.parse_args()
 
     repo_slug = args.repo or os.getenv('GITHUB_REPOSITORY') or 'MicrosoftDocs/architecture-center'
@@ -241,7 +297,6 @@ def main():
         'count': len(items),
         'items': items,
     }
-
     Path(args.output).write_text(json.dumps(out, indent=2), encoding='utf-8')
     print(f"Wrote {len(items)} matching items to {args.output}")
 
@@ -249,7 +304,7 @@ def main():
         dbg = {
             'counts': counts,
             'skipped_total': len(skipped),
-            'skipped_sample': skipped[:400],
+            'skipped_sample': skipped[:600],
         }
         Path('scan-debug.json').write_text(json.dumps(dbg, indent=2), encoding='utf-8')
         print(f"Wrote debug to scan-debug.json (skipped_total={len(skipped)})")

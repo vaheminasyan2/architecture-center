@@ -1,18 +1,7 @@
 #!/usr/bin/env python3
-"""Convert scan-results.json into Excel + CSVs.
+"""Convert scan-results.json into Excel + CSVs."""
 
-Outputs:
-- scan-results_flat.csv (one row per YAML item)
-- scan-results_links.csv (one row per link)
-- scan-results_images.csv (one row per image)
-- scan-results.xlsx with 3 tabs: items_flat, links, images
-
-Usage:
-  python scripts/convert_scan_results_to_excel.py --input scan-results.json
-"""
-
-import argparse
-import json
+import argparse, json
 from pathlib import Path
 import pandas as pd
 
@@ -36,9 +25,8 @@ def main():
     for c in list_cols:
         df[c] = df[c].apply(lambda x: " | ".join(map(str, x)) if isinstance(x, list) else x)
 
-    (outdir/'scan-results_flat.csv').write_text(df.to_csv(index=False), encoding='utf-8')
+    df.to_csv(outdir/'scan-results_flat.csv', index=False)
 
-    # Links
     link_rows = []
     for it in items:
         base = {
@@ -56,7 +44,6 @@ def main():
     links_df = pd.DataFrame(link_rows)
     links_df.to_csv(outdir/'scan-results_links.csv', index=False)
 
-    # Images
     img_rows = []
     for it in items:
         base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path')}
@@ -75,13 +62,10 @@ def main():
     images_df = pd.DataFrame(img_rows)
     images_df.to_csv(outdir/'scan-results_images.csv', index=False)
 
-    # Excel
     with pd.ExcelWriter(outdir/'scan-results.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='items_flat', index=False)
         links_df.to_excel(writer, sheet_name='links', index=False)
         images_df.to_excel(writer, sheet_name='images', index=False)
-
-    print('Wrote scan-results.xlsx and CSVs')
 
 
 if __name__ == '__main__':
