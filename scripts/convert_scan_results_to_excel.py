@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Convert scan-results.json into Excel + CSVs.
+
+Outputs:
+- scan-results_flat.csv (one row per YAML item)
+- scan-results_links.csv (one row per link)
+- scan-results_images.csv (one row per image)
+- scan-results.xlsx with 3 tabs: items_flat, links, images
+
+Usage:
+  python scripts/convert_scan_results_to_excel.py --input scan-results.json
+"""
+
+import argparse
+import json
+from pathlib import Path
+import pandas as pd
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--input', default='scan-results.json')
+    ap.add_argument('--outdir', default='.')
+    args = ap.parse_args()
+
+    inp = Path(args.input)
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    data = json.loads(inp.read_text(encoding='utf-8'))
+    items = data.get('items', [])
+
+    df = pd.json_normalize(items)
+
+    # Convert list fields to pipe-separated strings for Excel-friendly single-row view
+    list_cols = [c for c in df.columns if df[c].apply(lambda x: isinstance(x, list)).any()]
+    for c in list_cols:
+        df[c] = df[c].apply(lambda x: " | ".join(map(str, x)) if isinstance(x, list) else x)
+
+    # Save flat CSV
+    flat_csv = outdir / 'scan-results_flat.csv'
+    df.to_csv(flat_csv, index=False)
+
+    # Links exploded
+    link_rows = []
+    for it in items:
+        base = {
+            'title': it.get('title'),
+            'yml_url': it.get('yml_url'),
+            'yml_path': it.get('yml_path'),
+            'azureCategories': ", ".join(it.get('azureCategories') or []),
+        }
+        for link in (it.get('azure_experience_links') or []):
+            link_rows.append({**base, 'link_type': 'azure_experience', 'link': link})
+        for link in (it.get('pricing_calculator_links') or []):
+            link_rows.append({**base, 'link_type': 'pricing_calculator', 'link': link})
+        for link in (it.get('shared_estimate_links') or []):
+            link_rows.append({**base, 'link_type': 'shared_estimate', 'link': link})
+
+    links_df = pd.DataFrame(link_rows)
+    links_csv = outdir / 'scan-results_links.csv'
+    links_df.to_csv(links_csv, index=False)
+
+    # Images exploded
+    img_rows = []
+    for it in items:
+        base = {
+            'title': it.get('title'),
+            'yml_url': it.get('yml_url'),
+            'yml_path': it.get('yml_path'),
+        }
+        paths = it.get('image_paths') or []
+        urls = it.get('image_download_urls') or []
+        fmts = it.get('image_formats') or []
+        exists = it.get('image_exists_in_repo') or []
+        for i, p in enumerate(paths):
+            img_rows.append({
+                **base,
+                'image_path': p,
+                'image_download_url': urls[i] if i < len(urls) else None,
+                'image_format': fmts[i] if i < len(fmts) else (p.split('.')[-1].lower() if isinstance(p, str) and '.' in p else None),
+                'image_exists_in_repo': exists[i] if i < len(exists) else None,
+            })
+
+    images_df = pd.DataFrame(img_rows)
+    images_csv = outdir / 'scan-results_images.csv'
+    images_df.to_csv(images_csv, index=False)
+
+    # Excel workbook
+    xlsx = outdir / 'scan-results.xlsx'
+    with pd.ExcelWriter(xlsx, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='items_flat', index=False)
+        links_df.to_excel(writer, sheet_name='links', index=False)
+        images_df.to_excel(writer, sheet_name='images', index=False)
+
+    print(f"Wrote: {flat_csv}, {links_csv}, {images_csv}, {xlsx}")
+
+
+if __name__ == '__main__':
+    main()
