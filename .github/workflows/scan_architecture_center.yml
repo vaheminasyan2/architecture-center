@@ -22,17 +22,32 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml
+          pip install pyyaml pandas openpyxl
 
-      - name: Run scanner
+      - name: Run scanner (with debug)
         run: |
-          python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json
+          python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json --debug
 
-      - name: Upload results artifact
+      - name: Convert to Excel/CSVs
+        run: |
+          python scripts/convert_scan_results_to_excel.py --input scan-results.json --outdir .
+
+      - name: Upload results artifacts
         uses: actions/upload-artifact@v4
         with:
           name: scan-results
-          path: scan-results.json
+          path: |
+            scan-results.json
+            scan-results.xlsx
+            scan-results_flat.csv
+            scan-results_links.csv
+            scan-results_images.csv
+
+      - name: Upload debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-debug
+          path: scan-debug.json
 
       - name: Job summary (top 25)
         run: |
@@ -43,12 +58,15 @@ jobs:
           data = json.loads(Path('scan-results.json').read_text())
           items = data.get('items', [])
           print(f"Total matches: {len(items)}\n")
-          print("| Title | Web page | # links | Azure categories |")
-          print("|---|---:|---:|---|")
+          print("| Title | Web page | Images (formats) | # links | Azure categories |")
+          print("|---|---|---:|---:|---|")
           for it in items[:25]:
             title = (it.get('title') or '').replace('|','\\|')
             web = it.get('yml_url')
+            fmts = it.get('image_formats') or []
+            fmt_summary = ','.join(sorted(set([f for f in fmts if f]))) if isinstance(fmts, list) else ''
+            img_count = len(it.get('image_paths') or [])
             link_count = len(it.get('all_matching_links') or [])
             cats = ', '.join(it.get('azureCategories') or [])
-            print(f"| {title} | {web} | {link_count} | {cats} |")
+            print(f"| {title} | {web} | {img_count} ({fmt_summary}) | {link_count} | {cats} |")
           PY
