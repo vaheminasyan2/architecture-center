@@ -28,13 +28,13 @@ jobs:
         run: |
           python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json --debug
 
-      - name: Convert debug JSON to CSVs
-        run: |
-          python scripts/convert_debug_to_csv.py --input scan-debug.json --outdir
-
-      - name: Convert to Excel/CSVs
+      - name: Convert results to Excel/CSVs
         run: |
           python scripts/convert_scan_results_to_excel.py --input scan-results.json --outdir .
+
+      - name: Convert debug JSON to CSVs
+        run: |
+          python scripts/convert_debug_to_csv.py
 
       - name: Upload results artifacts
         uses: actions/upload-artifact@v4
@@ -47,38 +47,11 @@ jobs:
             scan-results_links.csv
             scan-results_images.csv
 
-      - name: Upload debug artifact
+      - name: Upload debug artifacts
         uses: actions/upload-artifact@v4
         with:
           name: scan-debug
-          path: scan-debug.json
-
-      - name: Upload debug CSVs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scan-debug-csv
           path: |
+            scan-debug.json
             scan-debug_counts.csv
             scan-debug_skipped_sample.csv
-
-      - name: Job summary (top 25)
-        run: |
-          echo "## Scan results" >> $GITHUB_STEP_SUMMARY
-          python - <<'PY' >> $GITHUB_STEP_SUMMARY
-          import json
-          from pathlib import Path
-          data = json.loads(Path('scan-results.json').read_text())
-          items = data.get('items', [])
-          print(f"Total matches: {len(items)}\n")
-          print("| Title | Web page | Images (formats) | # links | Azure categories |")
-          print("|---|---|---:|---:|---|")
-          for it in items[:25]:
-            title = (it.get('title') or '').replace('|','\\|')
-            web = it.get('yml_url')
-            fmts = it.get('image_formats') or []
-            fmt_summary = ','.join(sorted(set([f for f in fmts if f]))) if isinstance(fmts, list) else ''
-            img_count = len(it.get('image_paths') or [])
-            link_count = len(it.get('all_matching_links') or [])
-            cats = ', '.join(it.get('azureCategories') or [])
-            print(f"| {title} | {web} | {img_count} ({fmt_summary}) | {link_count} | {cats} |")
-          PY
