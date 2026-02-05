@@ -32,16 +32,13 @@ def main():
 
     df = pd.json_normalize(items)
 
-    # Convert list fields to pipe-separated strings for Excel-friendly single-row view
     list_cols = [c for c in df.columns if df[c].apply(lambda x: isinstance(x, list)).any()]
     for c in list_cols:
         df[c] = df[c].apply(lambda x: " | ".join(map(str, x)) if isinstance(x, list) else x)
 
-    # Save flat CSV
-    flat_csv = outdir / 'scan-results_flat.csv'
-    df.to_csv(flat_csv, index=False)
+    (outdir/'scan-results_flat.csv').write_text(df.to_csv(index=False), encoding='utf-8')
 
-    # Links exploded
+    # Links
     link_rows = []
     for it in items:
         base = {
@@ -56,19 +53,13 @@ def main():
             link_rows.append({**base, 'link_type': 'pricing_calculator', 'link': link})
         for link in (it.get('shared_estimate_links') or []):
             link_rows.append({**base, 'link_type': 'shared_estimate', 'link': link})
-
     links_df = pd.DataFrame(link_rows)
-    links_csv = outdir / 'scan-results_links.csv'
-    links_df.to_csv(links_csv, index=False)
+    links_df.to_csv(outdir/'scan-results_links.csv', index=False)
 
-    # Images exploded
+    # Images
     img_rows = []
     for it in items:
-        base = {
-            'title': it.get('title'),
-            'yml_url': it.get('yml_url'),
-            'yml_path': it.get('yml_path'),
-        }
+        base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path')}
         paths = it.get('image_paths') or []
         urls = it.get('image_download_urls') or []
         fmts = it.get('image_formats') or []
@@ -78,22 +69,19 @@ def main():
                 **base,
                 'image_path': p,
                 'image_download_url': urls[i] if i < len(urls) else None,
-                'image_format': fmts[i] if i < len(fmts) else (p.split('.')[-1].lower() if isinstance(p, str) and '.' in p else None),
+                'image_format': fmts[i] if i < len(fmts) else None,
                 'image_exists_in_repo': exists[i] if i < len(exists) else None,
             })
-
     images_df = pd.DataFrame(img_rows)
-    images_csv = outdir / 'scan-results_images.csv'
-    images_df.to_csv(images_csv, index=False)
+    images_df.to_csv(outdir/'scan-results_images.csv', index=False)
 
-    # Excel workbook
-    xlsx = outdir / 'scan-results.xlsx'
-    with pd.ExcelWriter(xlsx, engine='openpyxl') as writer:
+    # Excel
+    with pd.ExcelWriter(outdir/'scan-results.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='items_flat', index=False)
         links_df.to_excel(writer, sheet_name='links', index=False)
         images_df.to_excel(writer, sheet_name='images', index=False)
 
-    print(f"Wrote: {flat_csv}, {links_csv}, {images_csv}, {xlsx}")
+    print('Wrote scan-results.xlsx and CSVs')
 
 
 if __name__ == '__main__':

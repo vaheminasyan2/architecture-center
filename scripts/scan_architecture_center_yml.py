@@ -1,26 +1,16 @@
 #!/usr/bin/env python3
-"""Architecture Center YAML Criteria Scanner (v3.3)
+"""Architecture Center YAML Criteria Scanner (v3.3.1)
 
-Improvements included:
-- INCLUDE parsing for YAML `content` block.
-- Diagram/image detection supports: .svg, .png, .jpg, .jpeg.
-- Output includes `image_paths` + `image_download_urls` + `image_formats`.
-  * Backward-compatible SVG-only fields retained: `svg_paths`, `svg_download_urls`, `svg_exists_in_repo`.
-- Link detection supports:
-  * Azure Experience links: https://azure.com/e/...
-  * ANY Azure Pricing Calculator links: https://azure.microsoft.com/pricing/calculator/...
-    (plus a `shared_estimate_links` subset when present).
-- Robust cleanup for markdown references (strips wrapping punctuation like '(' ')' '<' '>' etc.)
-- Optional debug output: `scan-debug.json` with counters + sample skipped reasons.
+Includes v3.3 functionality + debug artifacts.
 
 Criteria (ALL must be true):
 1) docs/**/*.yml contains a `content` string with an INCLUDE directive referencing a `.md` file.
-2) Included `.md` contains at least one architecture diagram reference with extension in {svg,png,jpg,jpeg}.
+2) Included `.md` contains at least one diagram reference with extension in {svg,png,jpg,jpeg}.
 3) Included `.md` contains at least one link matching either:
    - https://azure.com/e/...
    - https://azure.microsoft.com/pricing/calculator/...
 
-Run inside GitHub Actions after checkout.
+Outputs scan-results.json and (when --debug) scan-debug.json.
 """
 
 import argparse
@@ -34,14 +24,10 @@ try:
 except Exception:
     yaml = None
 
-# [!INCLUDE [] (file.md)] (case/space tolerant)
 INCLUDE_RE = re.compile(r"\[!INCLUDE\s*\[\s*\]\s*\(\s*([^\)\s]+\.md)\s*\)\s*\]", re.IGNORECASE)
-
 AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
 PRICING_CALC_ANY_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/[^\s\)\]\"']*", re.IGNORECASE)
 SHARED_ESTIMATE_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/\?shared-estimate=[^\s\)\]\"']+", re.IGNORECASE)
-
-# Find image refs with supported formats. We'll clean punctuation after matching.
 IMAGE_RE = re.compile(r"[^\s\)\]\"']+\.(?:svg|png|jpg|jpeg)", re.IGNORECASE)
 
 
@@ -71,7 +57,6 @@ def make_github_blob_url(repo_slug: str, branch: str, repo_rel_path: str) -> str
 
 
 def make_learn_url_from_docs_path(repo_rel_yml: str) -> str:
-    # best-effort mapping: docs/<path>/<name>.yml -> /azure/architecture/<path>/<name>
     p = repo_rel_yml.replace('\\', '/')
     if p.startswith('docs/'):
         p = p[len('docs/'):]
@@ -81,7 +66,6 @@ def make_learn_url_from_docs_path(repo_rel_yml: str) -> str:
 
 
 def clean_ref(ref: str) -> str:
-    # strip wrappers commonly introduced by markdown syntax
     return ref.strip().strip('"').strip("'").strip().strip('()<>[]')
 
 
@@ -113,7 +97,6 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'md_has_links': 0,
         'matched': 0,
     }
-
     skipped = []
     results = []
 
@@ -186,12 +169,7 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             continue
         counts['md_has_images'] += 1
 
-        image_paths = []
-        image_download_urls = []
-        image_exists = []
-        image_formats = []
-
-        # Backward compatible SVG-only lists
+        image_paths, image_download_urls, image_exists, image_formats = [], [], [], []
         svg_paths, svg_download_urls, svg_exists = [], [], []
 
         for img_ref in image_refs_raw:
@@ -220,27 +198,18 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'title': title,
             'description': description,
             'azureCategories': azure_categories,
-
-            # Clickable Learn URL + source fallback
             'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
             'yml_github_url': make_github_blob_url(repo_slug, branch, repo_rel_yml),
             'yml_path': repo_rel_yml,
-
             'include_md_path': include_md_rel,
             'include_md_github_url': make_github_blob_url(repo_slug, branch, include_md_rel),
-
-            # Images (all supported formats)
             'image_paths': image_paths,
             'image_download_urls': image_download_urls,
             'image_exists_in_repo': image_exists,
             'image_formats': image_formats,
-
-            # SVG-only backward compatibility
             'svg_paths': svg_paths,
             'svg_download_urls': svg_download_urls,
             'svg_exists_in_repo': svg_exists,
-
-            # Links
             'azure_experience_links': azure_experience_links,
             'pricing_calculator_links': pricing_calculator_links,
             'shared_estimate_links': shared_estimate_links,
