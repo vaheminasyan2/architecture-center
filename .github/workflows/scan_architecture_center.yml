@@ -1,0 +1,54 @@
+name: Scan Architecture Center YAML Criteria
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Run scanner
+        run: |
+          python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results
+          path: scan-results.json
+
+      - name: Job summary (top 25)
+        run: |
+          echo "## Scan results" >> $GITHUB_STEP_SUMMARY
+          python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json
+          from pathlib import Path
+          data = json.loads(Path('scan-results.json').read_text())
+          items = data.get('items', [])
+          print(f"Total matches: {len(items)}\n")
+          print("| Title | Web page | # links | Azure categories |")
+          print("|---|---:|---:|---|")
+          for it in items[:25]:
+            title = (it.get('title') or '').replace('|','\\|')
+            web = it.get('yml_url')
+            link_count = len(it.get('all_matching_links') or [])
+            cats = ', '.join(it.get('azureCategories') or [])
+            print(f"| {title} | {web} | {link_count} | {cats} |")
+          PY
