@@ -27,23 +27,27 @@ def main():
 
     df.to_csv(outdir/'scan-results_flat.csv', index=False)
 
+    # Links exploded with category
     link_rows = []
     for it in items:
         base = {
             'title': it.get('title'),
             'yml_url': it.get('yml_url'),
             'yml_path': it.get('yml_path'),
-            'azureCategories': ", ".join(it.get('azureCategories') or []),
         }
+        for link in (it.get('calculator_root_links') or []):
+            link_rows.append({**base, 'link_category': 'calculator_root', 'link': link})
+        for link in (it.get('calculator_shared_estimate_links') or []):
+            link_rows.append({**base, 'link_category': 'calculator_shared_estimate', 'link': link})
         for link in (it.get('azure_experience_links') or []):
-            link_rows.append({**base, 'link_type': 'azure_experience', 'link': link})
-        for link in (it.get('pricing_calculator_links') or []):
-            link_rows.append({**base, 'link_type': 'pricing_calculator', 'link': link})
-        for link in (it.get('shared_estimate_links') or []):
-            link_rows.append({**base, 'link_type': 'shared_estimate', 'link': link})
+            link_rows.append({**base, 'link_category': 'azure_experience_shared_estimate', 'link': link})
+        for link in (it.get('calculator_other_links') or []):
+            link_rows.append({**base, 'link_category': 'calculator_other', 'link': link})
+
     links_df = pd.DataFrame(link_rows)
     links_df.to_csv(outdir/'scan-results_links.csv', index=False)
 
+    # Images exploded
     img_rows = []
     for it in items:
         base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path')}
@@ -59,6 +63,7 @@ def main():
                 'image_format': fmts[i] if i < len(fmts) else None,
                 'image_exists_in_repo': exists[i] if i < len(exists) else None,
             })
+
     images_df = pd.DataFrame(img_rows)
     images_df.to_csv(outdir/'scan-results_images.csv', index=False)
 

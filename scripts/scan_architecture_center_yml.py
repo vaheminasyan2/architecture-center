@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""Architecture Center YAML Criteria Scanner (v3.3.3)
+"""Architecture Center YAML Criteria Scanner (v3.3.4)
 
-Updates in this version (per your findings):
-- Removed the strict `## Architecture` section requirement.
-- Detects architecture diagram images ANYWHERE in the included markdown, but:
-  * Excludes obvious thumbnails/browse images
-  * Uses heuristics to focus on *architecture diagrams*, not incidental images.
-- Supports BOTH markdown image styles:
-  1) Direct-path images, including Docs `:::image ... source="...svg"` and standard `![](...svg)`
-  2) Reference-style images like: `![Architecture diagram][architecture]` with a later
-     `[architecture]: ./images/foo.svg` definition.
+Changes requested:
+- Pricing calculator link detection fixed to match *root* URLs without requiring a trailing slash or extra path.
+- Supports localized root calculator URLs:
+    https://azure.microsoft.com/pricing/calculator
+    https://azure.microsoft.com/en-us/pricing/calculator
+  (also allows optional trailing slash)
+- Categorizes calculator links into:
+  1) calculator_root_links (root calculator, incl. localized)
+  2) shared_estimate_links (both https://azure.com/e/* AND calculator shared-estimate URLs)
+- Keeps calculator_other_links (any other pricing calculator URLs) for visibility.
 
 Criteria (ALL must be true):
 1) docs/**/*.yml contains a `content` string with an INCLUDE directive referencing a `.md` file.
-2) Included `.md` contains >=1 *architecture diagram image* in {svg,png,jpg,jpeg} (heuristic).
-3) Included `.md` contains >=1 link matching either:
-   - https://azure.com/e/...
-   - https://azure.microsoft.com/pricing/calculator/...
+2) Included `.md` contains >=1 *architecture diagram image* in {svg,png,jpg,jpeg} (heuristic; supports reference-style images).
+3) Included `.md` contains >=1 link in either category:
+   - calculator_root_links OR
+   - shared_estimate_links OR
+   - calculator_other_links
 
 Outputs scan-results.json and (when --debug) scan-debug.json.
 """
@@ -33,25 +35,29 @@ except Exception:
     yaml = None
 
 INCLUDE_RE = re.compile(r"\[!INCLUDE\s*\[\s*\]\s*\(\s*([^\)\s]+\.md)\s*\)\s*\]", re.IGNORECASE)
-AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
-PRICING_CALC_ANY_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/[^\s\)\]\"']*", re.IGNORECASE)
-SHARED_ESTIMATE_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/\?shared-estimate=[^\s\)\]\"']+", re.IGNORECASE)
 
-# Any direct image ref
+# Shared estimate equivalent
+AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
+
+# Localized pricing calculator base
+LOCALE_SEG = r"(?:[a-z]{2}-[a-z]{2}/)?"  # en-us/, fr-fr/ etc.
+
+# Root calculator only (no query, no fragment, optional trailing slash)
+CALC_ROOT_RE = re.compile(rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?(?=$|[\s\)\]\"'])", re.IGNORECASE)
+
+# Any pricing calculator URL (root, shared-estimate, fragments, extra query params)
+CALC_ANY_RE = re.compile(rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator[^\s\)\]\"']*", re.IGNORECASE)
+
+# Shared estimate via calculator query
+CALC_SHARED_ESTIMATE_RE = re.compile(rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\"']*shared-estimate=[^\s\)\]\"']+", re.IGNORECASE)
+
+# Images
 IMG_EXT_RE = r"(?:svg|png|jpg|jpeg)"
 IMAGE_PATH_RE = re.compile(rf"[^\s\)\]\"']+\.(?:{IMG_EXT_RE})", re.IGNORECASE)
-
-# Reference-style definitions and uses
 REF_DEF_RE = re.compile(r"(?im)^\[([^\]]+)\]:\s*(\S+)")
 REF_USE_RE = re.compile(r"!\[[^\]]*\]\[([^\]]+)\]")
-
-# HTML <img src="...">
 HTML_IMG_RE = re.compile(rf"(?i)<img[^>]+src=[\"']([^\"']+\.(?:{IMG_EXT_RE}))")
-
-# Obvious non-diagram image locations
 THUMB_EXCLUDE_RE = re.compile(r"(?i)(/browse/thumbs/|\bthumbs/|thumbnail|social_image|/icons/)")
-
-# Heuristic: likely architecture diagram
 ARCH_HINT_RE = re.compile(r"(?i)\b(architecture|diagram|reference\s*architecture|network\s*topology|dataflow)\b")
 
 
@@ -109,7 +115,6 @@ def resolve_repo_rel(base_dir: Path, ref: str, repo_root: Path):
 
 
 def extract_reference_map(md_text: str):
-    """Map reference ids to paths/urls: [architecture]: ./images/foo.svg"""
     m = {}
     for key, target in REF_DEF_RE.findall(md_text):
         m[key.strip().lower()] = clean_ref(target)
@@ -117,16 +122,13 @@ def extract_reference_map(md_text: str):
 
 
 def is_likely_architecture_image(img_path: str, context_line: str, ref_key: str | None = None) -> bool:
-    """Heuristic filter to focus on architecture diagrams."""
     p = (img_path or '').lower()
     line = (context_line or '').lower()
     key = (ref_key or '').lower()
 
-    # exclude thumbnails/icons etc.
     if THUMB_EXCLUDE_RE.search(p) or THUMB_EXCLUDE_RE.search(line):
         return False
 
-    # strong signals
     if ':::image' in line:
         return True
     if key in ('architecture', 'arch', 'architecturediagram', 'architecture-diagram', 'diagram'):
@@ -134,14 +136,11 @@ def is_likely_architecture_image(img_path: str, context_line: str, ref_key: str 
     if ARCH_HINT_RE.search(line):
         return True
 
-    # filename hints
     fname = p.split('/')[-1]
     if ARCH_HINT_RE.search(fname):
         return True
 
-    # folder hints common in archcenter
     if '/_images/' in p or '/images/' in p or '/media/' in p:
-        # still require *some* hint in filename to avoid grabbing generic screenshots
         if ARCH_HINT_RE.search(fname):
             return True
 
@@ -149,40 +148,33 @@ def is_likely_architecture_image(img_path: str, context_line: str, ref_key: str 
 
 
 def find_architecture_images(md_text: str):
-    """Return list of (raw_ref, ref_key, context_line) for likely architecture images."""
     lines = md_text.splitlines()
     ref_map = extract_reference_map(md_text)
 
     found = []
-
-    # 1) direct-path references (scan each line to get context)
     for line in lines:
         for raw in IMAGE_PATH_RE.findall(line):
             raw2 = clean_ref(raw)
             if is_likely_architecture_image(raw2, line):
                 found.append((raw2, None, line))
 
-    # 2) html img tags
     for line in lines:
         for raw in HTML_IMG_RE.findall(line):
             raw2 = clean_ref(raw)
             if is_likely_architecture_image(raw2, line):
                 found.append((raw2, None, line))
 
-    # 3) reference-style images
     for line in lines:
         for ref_key in REF_USE_RE.findall(line):
             key_l = ref_key.strip().lower()
             target = ref_map.get(key_l)
             if not target:
                 continue
-            # only include if target looks like supported image
             if not re.search(rf"\.(?:{IMG_EXT_RE})$", target, re.IGNORECASE):
                 continue
             if is_likely_architecture_image(target, line, ref_key=key_l):
                 found.append((target, key_l, line))
 
-    # de-dupe by path
     seen = set()
     out = []
     for raw, key, line in found:
@@ -192,6 +184,45 @@ def find_architecture_images(md_text: str):
         seen.add(k)
         out.append((raw, key, line))
     return out
+
+
+def categorize_links(md_text: str):
+    """Return categorized links per request."""
+    azure_experience_links = sorted(set(AZURE_E_RE.findall(md_text)))
+    calc_any = sorted(set(CALC_ANY_RE.findall(md_text)))
+
+    calc_shared = sorted({u for u in calc_any if re.search(r"shared-estimate=", u, re.IGNORECASE)})
+
+    calc_root = []
+    calc_other = []
+    for u in calc_any:
+        u_clean = u.rstrip(').,;')
+        # Root means matches CALC_ROOT_RE and has no query string
+        if CALC_ROOT_RE.match(u_clean) and ('?' not in u_clean) and ('#' not in u_clean):
+            calc_root.append(u_clean)
+        elif u not in calc_shared:
+            calc_other.append(u)
+
+    calc_root = sorted(set(calc_root))
+    calc_other = sorted(set(calc_other))
+
+    shared_estimate_links = sorted(set(azure_experience_links + calc_shared))
+
+    # Qualifying links for criteria
+    has_any = bool(calc_root or shared_estimate_links or calc_other)
+
+    all_matching_links = sorted(set(azure_experience_links + calc_any))
+
+    return {
+        'azure_experience_links': azure_experience_links,
+        'calculator_root_links': calc_root,
+        'calculator_shared_estimate_links': calc_shared,
+        'calculator_other_links': calc_other,
+        'shared_estimate_links': shared_estimate_links,
+        'pricing_calculator_links': calc_any,
+        'all_matching_links': all_matching_links,
+        'has_any_qualifying_links': has_any,
+    }
 
 
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
@@ -205,9 +236,6 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'include_md_exists': 0,
         'md_has_links_any': 0,
         'md_has_arch_images_any': 0,
-        'md_arch_images_only': 0,
-        'md_links_only': 0,
-        'md_images_and_links': 0,
         'matched': 0,
     }
 
@@ -266,27 +294,17 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         md_text = md_file.read_text(encoding='utf-8', errors='ignore')
 
-        # Links
-        azure_experience_links = sorted(set(AZURE_E_RE.findall(md_text)))
-        pricing_calculator_links = sorted(set(PRICING_CALC_ANY_RE.findall(md_text)))
-        shared_estimate_links = sorted(set(SHARED_ESTIMATE_RE.findall(md_text)))
-        has_links_any = bool(azure_experience_links or pricing_calculator_links)
+        # Links (categorized)
+        link_info = categorize_links(md_text)
+        has_links_any = link_info['has_any_qualifying_links']
         if has_links_any:
             counts['md_has_links_any'] += 1
 
-        # Images (architecture diagrams, heuristics)
+        # Images (architecture diagram heuristic)
         arch_imgs = find_architecture_images(md_text)
         has_arch_imgs_any = bool(arch_imgs)
         if has_arch_imgs_any:
             counts['md_has_arch_images_any'] += 1
-
-        # cross-counts
-        if has_arch_imgs_any and not has_links_any:
-            counts['md_arch_images_only'] += 1
-        elif has_links_any and not has_arch_imgs_any:
-            counts['md_links_only'] += 1
-        elif has_links_any and has_arch_imgs_any:
-            counts['md_images_and_links'] += 1
 
         # Apply criteria
         if not has_links_any:
@@ -322,8 +340,6 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
                 svg_download_urls.append(make_raw_url(repo_slug, branch, img_rel))
                 svg_exists.append(exists)
 
-        all_matching_links = sorted(set(azure_experience_links + pricing_calculator_links))
-
         results.append({
             'criteria_passed': True,
             'title': title,
@@ -342,10 +358,16 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'svg_paths': svg_paths,
             'svg_download_urls': svg_download_urls,
             'svg_exists_in_repo': svg_exists,
-            'azure_experience_links': azure_experience_links,
-            'pricing_calculator_links': pricing_calculator_links,
-            'shared_estimate_links': shared_estimate_links,
-            'all_matching_links': all_matching_links,
+            # Link outputs
+            **{k: link_info[k] for k in [
+                'calculator_root_links',
+                'calculator_shared_estimate_links',
+                'calculator_other_links',
+                'pricing_calculator_links',
+                'azure_experience_links',
+                'shared_estimate_links',
+                'all_matching_links'
+            ]}
         })
         counts['matched'] += 1
 
