@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""Architecture Center YAML Criteria Scanner (v3.3.4)
+"""Architecture Center YAML Criteria Scanner (v3.3.5)
 
-Changes requested:
-- Pricing calculator link detection fixed to match *root* URLs without requiring a trailing slash or extra path.
-- Supports localized root calculator URLs:
-    https://azure.microsoft.com/pricing/calculator
-    https://azure.microsoft.com/en-us/pricing/calculator
-  (also allows optional trailing slash)
-- Categorizes calculator links into:
-  1) calculator_root_links (root calculator, incl. localized)
-  2) shared_estimate_links (both https://azure.com/e/* AND calculator shared-estimate URLs)
-- Keeps calculator_other_links (any other pricing calculator URLs) for visibility.
+New in v3.3.5
+- Adds to *skipped* debug rows (when available): title, description, azureCategories, yml_url.
+- Adds author fields to BOTH results and debug:
+  - md_author_github (from included MD front matter `author:` when present; else falls back to YAML `author:`)
+  - md_ms_author (from MD front matter `ms.author:` when present; else YAML `ms.author:`)
+  Note: ms.author is typically a Microsoft alias; email is not generally present in repo content.
+
+Includes v3.3.4 features:
+- Pricing calculator link detection supports root + localized + shared-estimate.
+- Link categories: calculator_root_links, shared_estimate_links, calculator_other_links.
+- Architecture image detection supports direct-path and reference-style markdown images.
 
 Criteria (ALL must be true):
 1) docs/**/*.yml contains a `content` string with an INCLUDE directive referencing a `.md` file.
-2) Included `.md` contains >=1 *architecture diagram image* in {svg,png,jpg,jpeg} (heuristic; supports reference-style images).
-3) Included `.md` contains >=1 link in either category:
-   - calculator_root_links OR
-   - shared_estimate_links OR
-   - calculator_other_links
+2) Included `.md` contains >=1 architecture diagram image in {svg,png,jpg,jpeg} (heuristic).
+3) Included `.md` contains >=1 qualifying link in any calculator category.
 
 Outputs scan-results.json and (when --debug) scan-debug.json.
 """
@@ -39,13 +37,13 @@ INCLUDE_RE = re.compile(r"\[!INCLUDE\s*\[\s*\]\s*\(\s*([^\)\s]+\.md)\s*\)\s*\]",
 # Shared estimate equivalent
 AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
 
-# Localized pricing calculator base
-LOCALE_SEG = r"(?:[a-z]{2}-[a-z]{2}/)?"  # en-us/, fr-fr/ etc.
+# Localized pricing calculator base (en-us/, fr-fr/ etc.)
+LOCALE_SEG = r"(?:[a-z]{2}-[a-z]{2}/)?"
 
-# Root calculator only (no query, no fragment, optional trailing slash)
+# Root calculator only (optional trailing slash)
 CALC_ROOT_RE = re.compile(rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?(?=$|[\s\)\]\"'])", re.IGNORECASE)
 
-# Any pricing calculator URL (root, shared-estimate, fragments, extra query params)
+# Any pricing calculator URL
 CALC_ANY_RE = re.compile(rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator[^\s\)\]\"']*", re.IGNORECASE)
 
 # Shared estimate via calculator query
@@ -112,6 +110,23 @@ def resolve_repo_rel(base_dir: Path, ref: str, repo_root: Path):
         return rel.as_posix()
     except Exception:
         return None
+
+
+def parse_md_front_matter(md_text: str):
+    """Parse YAML front matter from MD if present."""
+    if not md_text.startswith('---'):
+        return {}
+    end = md_text.find('\n---', 3)
+    if end == -1:
+        return {}
+    fm_text = md_text[3:end]
+    if yaml is None:
+        return {}
+    try:
+        data = yaml.safe_load(fm_text)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def extract_reference_map(md_text: str):
@@ -187,7 +202,6 @@ def find_architecture_images(md_text: str):
 
 
 def categorize_links(md_text: str):
-    """Return categorized links per request."""
     azure_experience_links = sorted(set(AZURE_E_RE.findall(md_text)))
     calc_any = sorted(set(CALC_ANY_RE.findall(md_text)))
 
@@ -197,7 +211,6 @@ def categorize_links(md_text: str):
     calc_other = []
     for u in calc_any:
         u_clean = u.rstrip(').,;')
-        # Root means matches CALC_ROOT_RE and has no query string
         if CALC_ROOT_RE.match(u_clean) and ('?' not in u_clean) and ('#' not in u_clean):
             calc_root.append(u_clean)
         elif u not in calc_shared:
@@ -208,9 +221,7 @@ def categorize_links(md_text: str):
 
     shared_estimate_links = sorted(set(azure_experience_links + calc_shared))
 
-    # Qualifying links for criteria
     has_any = bool(calc_root or shared_estimate_links or calc_other)
-
     all_matching_links = sorted(set(azure_experience_links + calc_any))
 
     return {
@@ -223,6 +234,18 @@ def categorize_links(md_text: str):
         'all_matching_links': all_matching_links,
         'has_any_qualifying_links': has_any,
     }
+
+
+def extract_yaml_meta(data: dict):
+    meta = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
+    title = meta.get('title') or data.get('title')
+    description = meta.get('description') or data.get('description')
+    azure_categories = as_list(data.get('azureCategories'))
+
+    author = meta.get('author') or data.get('author')
+    ms_author = meta.get('ms.author') or data.get('ms.author')
+
+    return title, description, azure_categories, author, ms_author
 
 
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
@@ -253,28 +276,33 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             continue
         counts['yml_parsed'] += 1
 
-        title = None
-        description = None
-        md_meta = data.get('metadata') if isinstance(data.get('metadata'), dict) else None
-        if md_meta:
-            title = md_meta.get('title')
-            description = md_meta.get('description')
-        title = title or data.get('title')
-        description = description or data.get('description')
-
-        azure_categories = as_list(data.get('azureCategories'))
+        title, description, azure_categories, y_author, y_ms_author = extract_yaml_meta(data)
 
         content = data.get('content')
         if not isinstance(content, str):
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'missing_content_string'})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'missing_content_string',
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                })
             continue
         counts['has_content'] += 1
 
         inc = INCLUDE_RE.search(content)
         if not inc:
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_include_directive'})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'no_include_directive',
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                })
             continue
         counts['has_include'] += 1
 
@@ -282,42 +310,77 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         include_md_rel = resolve_repo_rel(yml_path.parent, include_md_ref, repo_root)
         if not include_md_rel:
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'include_md_unresolvable', 'include_md_ref': include_md_ref})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'include_md_unresolvable',
+                    'include_md_ref': include_md_ref,
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                })
             continue
 
         md_file = repo_root / include_md_rel
         if not md_file.exists():
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'include_md_missing', 'include_md_path': include_md_rel})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'include_md_missing',
+                    'include_md_path': include_md_rel,
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                })
             continue
         counts['include_md_exists'] += 1
 
         md_text = md_file.read_text(encoding='utf-8', errors='ignore')
+        fm = parse_md_front_matter(md_text)
+        md_author = (fm.get('author') if isinstance(fm, dict) else None) or y_author
+        md_ms_author = (fm.get('ms.author') if isinstance(fm, dict) else None) or y_ms_author
 
-        # Links (categorized)
         link_info = categorize_links(md_text)
         has_links_any = link_info['has_any_qualifying_links']
         if has_links_any:
             counts['md_has_links_any'] += 1
 
-        # Images (architecture diagram heuristic)
         arch_imgs = find_architecture_images(md_text)
         has_arch_imgs_any = bool(arch_imgs)
         if has_arch_imgs_any:
             counts['md_has_arch_images_any'] += 1
 
-        # Apply criteria
         if not has_links_any:
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_matching_links', 'include_md_path': include_md_rel})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'no_matching_links',
+                    'include_md_path': include_md_rel,
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                    'md_author_github': md_author,
+                    'md_ms_author': md_ms_author,
+                })
             continue
 
         if not has_arch_imgs_any:
             if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_architecture_images', 'include_md_path': include_md_rel})
+                skipped.append({
+                    'yml_path': repo_rel_yml,
+                    'reason': 'no_architecture_images',
+                    'include_md_path': include_md_rel,
+                    'title': title,
+                    'description': description,
+                    'azureCategories': azure_categories,
+                    'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
+                    'md_author_github': md_author,
+                    'md_ms_author': md_ms_author,
+                })
             continue
 
-        # Build image outputs
         image_paths, image_download_urls, image_exists, image_formats = [], [], [], []
         svg_paths, svg_download_urls, svg_exists = [], [], []
 
@@ -350,6 +413,8 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'yml_path': repo_rel_yml,
             'include_md_path': include_md_rel,
             'include_md_github_url': make_github_blob_url(repo_slug, branch, include_md_rel),
+            'md_author_github': md_author,
+            'md_ms_author': md_ms_author,
             'architecture_image_heuristic': True,
             'image_paths': image_paths,
             'image_download_urls': image_download_urls,
@@ -358,7 +423,6 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'svg_paths': svg_paths,
             'svg_download_urls': svg_download_urls,
             'svg_exists_in_repo': svg_exists,
-            # Link outputs
             **{k: link_info[k] for k in [
                 'calculator_root_links',
                 'calculator_shared_estimate_links',
@@ -402,7 +466,7 @@ def main():
         dbg = {
             'counts': counts,
             'skipped_total': len(skipped),
-            'skipped_sample': skipped[:800],
+            'skipped_sample': skipped[:1000],
         }
         Path('scan-debug.json').write_text(json.dumps(dbg, indent=2), encoding='utf-8')
         print(f"Wrote debug to scan-debug.json (skipped_total={len(skipped)})")

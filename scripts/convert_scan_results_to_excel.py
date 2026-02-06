@@ -27,14 +27,10 @@ def main():
 
     df.to_csv(outdir/'scan-results_flat.csv', index=False)
 
-    # Links exploded with category
     link_rows = []
     for it in items:
-        base = {
-            'title': it.get('title'),
-            'yml_url': it.get('yml_url'),
-            'yml_path': it.get('yml_path'),
-        }
+        base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path'),
+                'md_author_github': it.get('md_author_github'), 'md_ms_author': it.get('md_ms_author')}
         for link in (it.get('calculator_root_links') or []):
             link_rows.append({**base, 'link_category': 'calculator_root', 'link': link})
         for link in (it.get('calculator_shared_estimate_links') or []):
@@ -47,10 +43,10 @@ def main():
     links_df = pd.DataFrame(link_rows)
     links_df.to_csv(outdir/'scan-results_links.csv', index=False)
 
-    # Images exploded
     img_rows = []
     for it in items:
-        base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path')}
+        base = {'title': it.get('title'), 'yml_url': it.get('yml_url'), 'yml_path': it.get('yml_path'),
+                'md_author_github': it.get('md_author_github'), 'md_ms_author': it.get('md_ms_author')}
         paths = it.get('image_paths') or []
         urls = it.get('image_download_urls') or []
         fmts = it.get('image_formats') or []
