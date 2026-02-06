@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Architecture Center YAML Criteria Scanner (v3.3.2)
+"""Architecture Center YAML Criteria Scanner (v3.3.3)
 
-Update in this version:
-- Image criteria now applies ONLY to the `## Architecture` section of the included markdown.
-  This excludes thumbnails/other images elsewhere in the doc.
-- Debug counters now include:
-  - md_has_architecture_section
-  - md_has_arch_images_any
-  - md_has_links_any
-  - md_arch_images_only
-  - md_links_only
-  - md_images_and_links
+Updates in this version (per your findings):
+- Removed the strict `## Architecture` section requirement.
+- Detects architecture diagram images ANYWHERE in the included markdown, but:
+  * Excludes obvious thumbnails/browse images
+  * Uses heuristics to focus on *architecture diagrams*, not incidental images.
+- Supports BOTH markdown image styles:
+  1) Direct-path images, including Docs `:::image ... source="...svg"` and standard `![](...svg)`
+  2) Reference-style images like: `![Architecture diagram][architecture]` with a later
+     `[architecture]: ./images/foo.svg` definition.
 
 Criteria (ALL must be true):
 1) docs/**/*.yml contains a `content` string with an INCLUDE directive referencing a `.md` file.
-2) Included `.md` has a `## Architecture` section containing at least one diagram reference with extension in {svg,png,jpg,jpeg}.
-3) Included `.md` contains at least one link matching either:
+2) Included `.md` contains >=1 *architecture diagram image* in {svg,png,jpg,jpeg} (heuristic).
+3) Included `.md` contains >=1 link matching either:
    - https://azure.com/e/...
    - https://azure.microsoft.com/pricing/calculator/...
 
@@ -37,10 +36,23 @@ INCLUDE_RE = re.compile(r"\[!INCLUDE\s*\[\s*\]\s*\(\s*([^\)\s]+\.md)\s*\)\s*\]",
 AZURE_E_RE = re.compile(r"https?://azure\.com/e/[^\s\)\]\"']+", re.IGNORECASE)
 PRICING_CALC_ANY_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/[^\s\)\]\"']*", re.IGNORECASE)
 SHARED_ESTIMATE_RE = re.compile(r"https?://azure\.microsoft\.com/pricing/calculator/\?shared-estimate=[^\s\)\]\"']+", re.IGNORECASE)
-IMAGE_RE = re.compile(r"[^\s\)\]\"']+\.(?:svg|png|jpg|jpeg)", re.IGNORECASE)
 
-ARCH_H2_RE = re.compile(r"(?im)^##\s+Architecture\b.*$")
-H2_RE = re.compile(r"(?im)^##\s+[^\n]+$")
+# Any direct image ref
+IMG_EXT_RE = r"(?:svg|png|jpg|jpeg)"
+IMAGE_PATH_RE = re.compile(rf"[^\s\)\]\"']+\.(?:{IMG_EXT_RE})", re.IGNORECASE)
+
+# Reference-style definitions and uses
+REF_DEF_RE = re.compile(r"(?im)^\[([^\]]+)\]:\s*(\S+)")
+REF_USE_RE = re.compile(r"!\[[^\]]*\]\[([^\]]+)\]")
+
+# HTML <img src="...">
+HTML_IMG_RE = re.compile(rf"(?i)<img[^>]+src=[\"']([^\"']+\.(?:{IMG_EXT_RE}))")
+
+# Obvious non-diagram image locations
+THUMB_EXCLUDE_RE = re.compile(r"(?i)(/browse/thumbs/|\bthumbs/|thumbnail|social_image|/icons/)")
+
+# Heuristic: likely architecture diagram
+ARCH_HINT_RE = re.compile(r"(?i)\b(architecture|diagram|reference\s*architecture|network\s*topology|dataflow)\b")
 
 
 def load_yaml(path: Path):
@@ -96,16 +108,90 @@ def resolve_repo_rel(base_dir: Path, ref: str, repo_root: Path):
         return None
 
 
-def extract_architecture_section(md_text: str):
-    """Return the text inside the `## Architecture` section (H2), or '' if missing."""
-    m = ARCH_H2_RE.search(md_text)
-    if not m:
-        return ''
-    start = m.end()
-    # Find next H2 after this heading
-    m2 = H2_RE.search(md_text, start)
-    end = m2.start() if m2 else len(md_text)
-    return md_text[start:end]
+def extract_reference_map(md_text: str):
+    """Map reference ids to paths/urls: [architecture]: ./images/foo.svg"""
+    m = {}
+    for key, target in REF_DEF_RE.findall(md_text):
+        m[key.strip().lower()] = clean_ref(target)
+    return m
+
+
+def is_likely_architecture_image(img_path: str, context_line: str, ref_key: str | None = None) -> bool:
+    """Heuristic filter to focus on architecture diagrams."""
+    p = (img_path or '').lower()
+    line = (context_line or '').lower()
+    key = (ref_key or '').lower()
+
+    # exclude thumbnails/icons etc.
+    if THUMB_EXCLUDE_RE.search(p) or THUMB_EXCLUDE_RE.search(line):
+        return False
+
+    # strong signals
+    if ':::image' in line:
+        return True
+    if key in ('architecture', 'arch', 'architecturediagram', 'architecture-diagram', 'diagram'):
+        return True
+    if ARCH_HINT_RE.search(line):
+        return True
+
+    # filename hints
+    fname = p.split('/')[-1]
+    if ARCH_HINT_RE.search(fname):
+        return True
+
+    # folder hints common in archcenter
+    if '/_images/' in p or '/images/' in p or '/media/' in p:
+        # still require *some* hint in filename to avoid grabbing generic screenshots
+        if ARCH_HINT_RE.search(fname):
+            return True
+
+    return False
+
+
+def find_architecture_images(md_text: str):
+    """Return list of (raw_ref, ref_key, context_line) for likely architecture images."""
+    lines = md_text.splitlines()
+    ref_map = extract_reference_map(md_text)
+
+    found = []
+
+    # 1) direct-path references (scan each line to get context)
+    for line in lines:
+        for raw in IMAGE_PATH_RE.findall(line):
+            raw2 = clean_ref(raw)
+            if is_likely_architecture_image(raw2, line):
+                found.append((raw2, None, line))
+
+    # 2) html img tags
+    for line in lines:
+        for raw in HTML_IMG_RE.findall(line):
+            raw2 = clean_ref(raw)
+            if is_likely_architecture_image(raw2, line):
+                found.append((raw2, None, line))
+
+    # 3) reference-style images
+    for line in lines:
+        for ref_key in REF_USE_RE.findall(line):
+            key_l = ref_key.strip().lower()
+            target = ref_map.get(key_l)
+            if not target:
+                continue
+            # only include if target looks like supported image
+            if not re.search(rf"\.(?:{IMG_EXT_RE})$", target, re.IGNORECASE):
+                continue
+            if is_likely_architecture_image(target, line, ref_key=key_l):
+                found.append((target, key_l, line))
+
+    # de-dupe by path
+    seen = set()
+    out = []
+    for raw, key, line in found:
+        k = raw.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append((raw, key, line))
+    return out
 
 
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
@@ -117,9 +203,8 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'has_content': 0,
         'has_include': 0,
         'include_md_exists': 0,
-        'md_has_architecture_section': 0,
-        'md_has_arch_images_any': 0,
         'md_has_links_any': 0,
+        'md_has_arch_images_any': 0,
         'md_arch_images_only': 0,
         'md_links_only': 0,
         'md_images_and_links': 0,
@@ -181,7 +266,7 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         md_text = md_file.read_text(encoding='utf-8', errors='ignore')
 
-        # Link detection (whole doc)
+        # Links
         azure_experience_links = sorted(set(AZURE_E_RE.findall(md_text)))
         pricing_calculator_links = sorted(set(PRICING_CALC_ANY_RE.findall(md_text)))
         shared_estimate_links = sorted(set(SHARED_ESTIMATE_RE.findall(md_text)))
@@ -189,37 +274,27 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         if has_links_any:
             counts['md_has_links_any'] += 1
 
-        # Architecture section image detection
-        arch_section = extract_architecture_section(md_text)
-        has_arch_section = bool(arch_section.strip())
-        if has_arch_section:
-            counts['md_has_architecture_section'] += 1
-
-        arch_image_refs_raw = sorted(set(IMAGE_RE.findall(arch_section))) if has_arch_section else []
-        has_arch_images_any = bool(arch_image_refs_raw)
-        if has_arch_images_any:
+        # Images (architecture diagrams, heuristics)
+        arch_imgs = find_architecture_images(md_text)
+        has_arch_imgs_any = bool(arch_imgs)
+        if has_arch_imgs_any:
             counts['md_has_arch_images_any'] += 1
 
-        # Debug-only cross counts (A: images-only means *arch images present* but *no qualifying links*)
-        if has_arch_images_any and not has_links_any:
+        # cross-counts
+        if has_arch_imgs_any and not has_links_any:
             counts['md_arch_images_only'] += 1
-        elif has_links_any and not has_arch_images_any:
+        elif has_links_any and not has_arch_imgs_any:
             counts['md_links_only'] += 1
-        elif has_links_any and has_arch_images_any:
+        elif has_links_any and has_arch_imgs_any:
             counts['md_images_and_links'] += 1
 
-        # Apply criteria in requested order
+        # Apply criteria
         if not has_links_any:
             if debug:
                 skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_matching_links', 'include_md_path': include_md_rel})
             continue
 
-        if not has_arch_section:
-            if debug:
-                skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_architecture_section', 'include_md_path': include_md_rel})
-            continue
-
-        if not has_arch_images_any:
+        if not has_arch_imgs_any:
             if debug:
                 skipped.append({'yml_path': repo_rel_yml, 'reason': 'no_architecture_images', 'include_md_path': include_md_rel})
             continue
@@ -228,9 +303,10 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         image_paths, image_download_urls, image_exists, image_formats = [], [], [], []
         svg_paths, svg_download_urls, svg_exists = [], [], []
 
-        for img_ref in arch_image_refs_raw:
+        for img_ref, _key, _line in arch_imgs:
             img_ref = clean_ref(img_ref)
             fmt = img_ref.split('.')[-1].lower() if '.' in img_ref else None
+
             img_rel = resolve_repo_rel(md_file.parent, img_ref, repo_root)
             if img_rel is None:
                 img_rel = img_ref.strip().lstrip('/')
@@ -258,7 +334,7 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'yml_path': repo_rel_yml,
             'include_md_path': include_md_rel,
             'include_md_github_url': make_github_blob_url(repo_slug, branch, include_md_rel),
-            'architecture_section_only': True,
+            'architecture_image_heuristic': True,
             'image_paths': image_paths,
             'image_download_urls': image_download_urls,
             'image_exists_in_repo': image_exists,
@@ -304,7 +380,7 @@ def main():
         dbg = {
             'counts': counts,
             'skipped_total': len(skipped),
-            'skipped_sample': skipped[:600],
+            'skipped_sample': skipped[:800],
         }
         Path('scan-debug.json').write_text(json.dumps(dbg, indent=2), encoding='utf-8')
         print(f"Wrote debug to scan-debug.json (skipped_total={len(skipped)})")
