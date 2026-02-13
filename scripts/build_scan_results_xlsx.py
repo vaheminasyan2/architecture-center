@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+import argparse, json
+from pathlib import Path
+import pandas as pd
+
+def pick_estimate_link(item: dict) -> str:
+    # Priority: calculator root, then shared-estimate, then other calculator links, then any matching links
+    for key in (
+        "calculator_root_links",
+        "shared_estimate_links",
+        "calculator_other_links",
+        "all_matching_links",
+        "pricing_calculator_links",
+    ):
+        vals = item.get(key) or []
+        if isinstance(vals, list) and vals:
+            return str(vals[0])
+    return ""
+
+def join_list(v):
+    if isinstance(v, list):
+        return "\n".join([str(x) for x in v if x is not None])
+    return "" if v is None else str(v)
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--input", default="scan-results.json")
+    ap.add_argument("--output", default="scan-results.xlsx")
+    args = ap.parse_args()
+
+    data = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    items = data.get("items", [])
+
+    rows = []
+    for it in items:
+        rows.append({
+            "title": it.get("title") or "",
+            "description": it.get("description") or "",
+            "azureCategories": "; ".join(it.get("azureCategories") or []) if isinstance(it.get("azureCategories"), list) else (it.get("azureCategories") or ""),
+            "yml_url": it.get("yml_url") or "",
+            "image_download_urls": join_list(it.get("image_download_urls") or []),
+            "estimate_link": pick_estimate_link(it),
+
+            # Optional passthrough fields (if you want them later)
+            "yml_path": it.get("yml_path") or "",
+            "include_md_path": it.get("include_md_path") or "",
+            "md_author_name": it.get("md_author_github") or "",
+            "md_ms_author_name": it.get("md_ms_author") or "",
+        })
+
+    df = pd.DataFrame(rows)
+
+    # IMPORTANT: write ONLY one sheet first, named scan-results
+    with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="scan-results", index=False)
+
+    print(f"Wrote {len(df)} rows to {args.output} (sheet: scan-results)")
+
+if __name__ == "__main__":
+    main()
