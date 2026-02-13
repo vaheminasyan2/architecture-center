@@ -3,25 +3,56 @@ import argparse, json
 from pathlib import Path
 import pandas as pd
 
+import re
+
+AZURE_E_RE = re.compile(r"^https?://azure\.com/e/\S+$", re.IGNORECASE)
+SHARED_RE  = re.compile(
+    r"^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?\S*shared-estimate=\S+$",
+    re.IGNORECASE
+)
+SERVICE_RE = re.compile(
+    r"^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?\S*service=\S+$",
+    re.IGNORECASE
+)
+
 def pick_estimate_link(item: dict) -> str:
-    # Priority: calculator root, then shared-estimate, then other calculator links, then any matching links
+    """
+    Allowed only:
+      1) https://azure.com/e/*
+      2) pricing calculator shared-estimate=*
+      3) pricing calculator service=*
+    Anything else => blank.
+    """
+
+    # Collect candidate link lists from scanner output (best recall)
+    candidates = []
     for key in (
-        "calculator_root_links",
+        "azure_experience_links",
         "shared_estimate_links",
-        "calculator_other_links",
-        "all_matching_links",
         "pricing_calculator_links",
+        "all_matching_links",
+        "calculator_other_links",
+        "calculator_shared_estimate_links",
     ):
         vals = item.get(key) or []
-        if isinstance(vals, list) and vals:
-            return str(vals[0])
+        if isinstance(vals, list):
+            candidates.extend([str(v).strip() for v in vals if v])
+        elif vals:
+            candidates.append(str(vals).strip())
+
+    # Prefer in order: Azure experience, shared-estimate, service
+    for u in candidates:
+        if AZURE_E_RE.match(u):
+            return u
+    for u in candidates:
+        if SHARED_RE.match(u):
+            return u
+    for u in candidates:
+        if SERVICE_RE.match(u):
+            return u
+
     return ""
-
-def join_list(v):
-    if isinstance(v, list):
-        return "\n".join([str(x) for x in v if x is not None])
-    return "" if v is None else str(v)
-
+``
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="scan-results.json")
