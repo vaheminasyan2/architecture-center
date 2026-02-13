@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import argparse, json
+import argparse
+import json
 from pathlib import Path
 import pandas as pd
 import re
@@ -12,7 +13,7 @@ SHARED_ESTIMATE_RE = re.compile(
     r'^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?[^\s]*shared-estimate=[^\s]+$',
     re.IGNORECASE,
 )
-# C) Service links: https://azure.microsoft.com/pricing/calculator/?...service=* (includes calculator?service=*, calculator/?service=*, etc.)
+# C) Service links: https://azure.microsoft.com/pricing/calculator/?...service=*
 SERVICE_RE = re.compile(
     r'^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?[^\s]*service=[^\s]+$',
     re.IGNORECASE,
@@ -45,7 +46,7 @@ def pick_estimate_link(item: dict) -> str:
         elif vals:
             candidates.append(str(vals).strip())
 
-    # normalize / dedupe while preserving order
+    # Dedupe while preserving order
     seen = set()
     ordered = []
     for u in candidates:
@@ -75,43 +76,43 @@ def join_list(v):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input", default="scan-results.json")
-    ap.add_argument("--output", default="scan-results.xlsx")
+    ap.add_argument('--input', default='scan-results.json')
+    ap.add_argument('--output', default='scan-results.xlsx')
     args = ap.parse_args()
 
-    data = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    items = data.get("items", [])
+    data = json.loads(Path(args.input).read_text(encoding='utf-8'))
+    items = data.get('items', [])
 
     rows = []
     for it in items:
-        # If you want Total scanned scenarios to reflect ALL yml files, the scanner should emit all of them.
         rows.append({
-            "title": it.get("title") or "",
-            "description": it.get("description") or "",
-            "azureCategories": "; ".join(it.get("azureCategories") or []) if isinstance(it.get("azureCategories"), list) else (it.get("azureCategories") or ""),
-            "yml_url": it.get("yml_url") or "",
-            "image_download_urls": join_list(it.get("image_download_urls") or []),
-            # enforce ONLY allowed link shapes; everything else becomes blank
-            "estimate_link": pick_estimate_link(it),
+            'title': it.get('title') or '',
+            'description': it.get('description') or '',
+            'azureCategories': '; '.join(it.get('azureCategories') or []) if isinstance(it.get('azureCategories'), list) else (it.get('azureCategories') or ''),
+            'yml_url': it.get('yml_url') or '',
+            'image_download_urls': join_list(it.get('image_download_urls') or []),
+            # Enforce ONLY allowed link shapes; everything else becomes blank
+            'estimate_link': pick_estimate_link(it),
 
-            # Helpful passthrough + diagnostics
-            "criteria_passed": bool(it.get("criteria_passed", False)),
-            "failure_reason": it.get("failure_reason") or "",
+            # Diagnostics (helps explain why a row is present but didn't pass criteria)
+            'criteria_passed': bool(it.get('criteria_passed', False)),
+            'failure_reason': it.get('failure_reason') or '',
 
-            "yml_path": it.get("yml_path") or "",
-            "include_md_path": it.get("include_md_path") or "",
-            "md_author_name": it.get("md_author_github") or it.get("md_author_name") or "",
-            "md_ms_author_name": it.get("md_ms_author") or it.get("md_ms_author_name") or "",
+            # Helpful passthrough fields
+            'yml_path': it.get('yml_path') or '',
+            'include_md_path': it.get('include_md_path') or '',
+            'md_author_name': it.get('md_author_github') or '',
+            'md_ms_author_name': it.get('md_ms_author') or '',
         })
 
     df = pd.DataFrame(rows)
 
     # IMPORTANT: write ONLY one sheet first, named "scan-results" (run_compare_only.py reads the first sheet)
-    with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="scan-results", index=False)
+    with pd.ExcelWriter(args.output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='scan-results', index=False)
 
     print(f"Wrote {len(df)} rows to {args.output} (sheet: scan-results)")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
