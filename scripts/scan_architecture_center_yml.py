@@ -247,6 +247,8 @@ def extract_yaml_meta(data: dict):
 
     return title, description, azure_categories, author, ms_author
 
+print(f"Scanning docs root: {docs_path.resolve()}")
+print(f"Discovered {len(yml_files)} YAML files before filtering")
 
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
     docs_path = repo_root / docs_root
@@ -475,4 +477,10 @@ def main():
 
 
 if __name__ == '__main__':
+
+    print("=== SCAN SUMMARY ===")
+    print(f"Total YAML files found: {counts['yml_total']}")
+    print(f"Rows emitted: {len(items)}")
+    print(f"Criteria passed: {counts['matched']}")
+    print(f"Criteria failed: {counts['
     main()
