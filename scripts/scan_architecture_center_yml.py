@@ -265,7 +265,9 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
     skipped = []
     results = []
 
-    for yml_path in docs_path.rglob('*.yml'):
+   yml_files = list(docs_path.rglob("*.yml")) + list(docs_path.rglob("*.yaml"))
+   for yml_path in sorted(set(yml_files)):
+
         counts['yml_total'] += 1
         repo_rel_yml = yml_path.relative_to(repo_root).as_posix()
 
