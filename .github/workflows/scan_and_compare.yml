@@ -1,0 +1,39 @@
+name: Architecture Scan + Estimate Comparison
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pyyaml pandas openpyxl
+      - name: Compile scripts (fail fast on syntax errors)
+        run: |
+          python -m py_compile scripts/scan_architecture_center_yml.py
+          python -m py_compile scripts/build_scan_results_xlsx.py
+          python -m py_compile scripts/run_compare_only.py
+
+      # 1) Run the real scanner -> JSON
+      - name: Run scanner (YML-based)
+        run: python scripts/scan_architecture_center_yml.py --branch main --docs-root docs --output scan-results.json
+
+      # 2) Convert JSON -> scan-results.xlsx with FIRST sheet named "scan-results"
+      - name: Build scan-results.xlsx for comparison
+        run: python scripts/build_scan_results_xlsx.py --input scan-results.json --output scan-results.xlsx
+
+      # 3) Compare against estimate_scenarios.xlsx (must exist in repo root)
+      - name: Compare with estimate scenarios
+        run: python scripts/run_compare_only.py
+
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results
+          path: scan-results.xlsx
