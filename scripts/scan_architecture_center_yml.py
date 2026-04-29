@@ -5,7 +5,7 @@ Design:
 - Primary question (criteria_passed): Does the included .md article contain a *usable estimate link*?
 - If no usable estimate link:
     1) failure_reason = no_estimate_link_calculator_tool_link_only
-       when a pricing calculator link exists but none match usable estimate patterns.
+       when a pricing calculator link exists but none match usable estimate patterns (Azure Experience or shared estimate only).
     2) failure_reason = no_estimate_link
        when neither pricing calculator links nor usable estimate links are found.
 - Image detection still runs for every included .md article and populates image fields,
@@ -44,11 +44,6 @@ SHARED_ESTIMATE_RE = re.compile(
     rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*shared-estimate=[^\s\)\]\\\"']+",
     re.IGNORECASE,
 )
-SERVICE_RE = re.compile(
-    rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*service=[^\s\)\]\\\"']+",
-    re.IGNORECASE,
-)
-
 # Image extraction (extension-agnostic)
 MD_INLINE_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^\)]+)\)")
 MD_REF_IMG_USE_RE = re.compile(r"!\[[^\]]*\]\[([^\]]+)\]")
