@@ -26,10 +26,6 @@ SHARED_ESTIMATE_RE = re.compile(
     r'^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?[^\s]*shared-estimate=[^\s]+$',
     re.IGNORECASE,
 )
-SERVICE_RE = re.compile(
-    r'^https?://azure\.microsoft\.com/(?:[a-z]{2}-[a-z]{2}/)?pricing/calculator/?\?[^\s]*service=[^\s]+$',
-    re.IGNORECASE,
-)
 
 
 def collect_estimate_links(item: dict) -> list:
