@@ -5,7 +5,7 @@ Design:
 - Primary question (criteria_passed): Does the included .md article contain a *usable estimate link*?
 - If no usable estimate link:
     1) failure_reason = no_estimate_link_calculator_tool_link_only
-       when a pricing calculator link exists but none match usable estimate patterns (Azure Experience or shared estimate only).
+       when a pricing calculator link exists but none match usable estimate patterns.
     2) failure_reason = no_estimate_link
        when neither pricing calculator links nor usable estimate links are found.
 - Image detection still runs for every included .md article and populates image fields,
@@ -190,9 +190,7 @@ def categorize_links(md_text: str) -> dict:
     calc_any = sorted(set(CALC_ANY_RE.findall(md_text)))
 
     shared_est = sorted({u for u in calc_any if SHARED_ESTIMATE_RE.search(u)})
-    service_links = sorted({u for u in calc_any if SERVICE_RE.search(u)})
-
-    calc_root: List[str] = []
+        calc_root: List[str] = []
     calc_other: List[str] = []
     for u in calc_any:
         u_clean = u.rstrip(').,;')
