@@ -44,6 +44,11 @@ SHARED_ESTIMATE_RE = re.compile(
     rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*shared-estimate=[^\s\)\]\\\"']+",
     re.IGNORECASE,
 )
+SERVICE_RE = re.compile(
+    rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*service=[^\s\)\]\\\"']+",
+    re.IGNORECASE,
+)
+
 # Image extraction (extension-agnostic)
 MD_INLINE_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^\)]+)\)")
 MD_REF_IMG_USE_RE = re.compile(r"!\[[^\]]*\]\[([^\]]+)\]")
@@ -190,7 +195,9 @@ def categorize_links(md_text: str) -> dict:
     calc_any = sorted(set(CALC_ANY_RE.findall(md_text)))
 
     shared_est = sorted({u for u in calc_any if SHARED_ESTIMATE_RE.search(u)})
-        calc_root: List[str] = []
+    service_links = sorted({u for u in calc_any if SERVICE_RE.search(u)})
+
+    calc_root: List[str] = []
     calc_other: List[str] = []
     for u in calc_any:
         u_clean = u.rstrip(').,;')
