@@ -1,6 +1,6 @@
 # MS Architecture Center Scanner
 
-A lightweight scanning tool used to analyze **https://learn.microsoft.com/en-us/azure/architecture/browse/** to determine scenarios that include a **usable Azure Pricing Calculator estimate link** and compare them against a reference list of known scenarios. The outputs help identify pricing‑ready scenarios, detect updated estimate links (estimate drift), and highlight gaps.
+A lightweight scanning tool used to analyze articles in the **[Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/browse)** to determine scenarios that include a **usable Azure Pricing Calculator estimate link** and compare them against a reference list of known scenarios. The outputs help identify pricing‑ready scenarios, detect updated estimate links (estimate drift), and highlight gaps.
 
 ## What the scanner evaluates
 
@@ -13,10 +13,7 @@ A scenario **passes (`criteria_passed = TRUE`)** if the included Markdown articl
 1. **Azure Experience / Pricing Calculator shared estimate links**  
    `https://azure.com/e/*` **or** `https://azure.microsoft.com/pricing/calculator?...shared-estimate=*`
 
-2. **Service‑scoped Pricing Calculator estimate link**  
-   `https://azure.microsoft.com/pricing/calculator?...service=*`
-
-> **Important:** Pricing Calculator tool/root links (for example, `/pricing/calculator` without a saved or scoped estimate) do **not** count as usable estimates.
+> **Important:** Pricing Calculator tool/root links (for example, `/pricing/calculator` without a saved estimate) do **not** count as usable estimates.
 
 ### Failure reasons
 
@@ -62,19 +59,19 @@ The Excel output includes a **`needs-review`** worksheet that automatically coll
 
 ## Repository files and what they do
 
-- `scripts/scan_architecture_center_yml.py`  
+- `architecture-center/scripts/scan_architecture_center_yml.py`  
   Scans Architecture Center YAML files and their included Markdown articles. Produces `scan-results.json`.
 
-- `scripts/build_scan_results_xlsx.py`  
+- `architecture-center/scripts/build_scan_results_xlsx.py`  
   Converts `scan-results.json` into the human‑readable Excel report `scan-results.xlsx`. This is the **authoritative JSON → Excel builder** and preserves **all compliant estimate links**.
 
-- `estimate_scenarios.xlsx`  
+- `architecture-center/estimate_scenarios.xlsx`  
   Reference inventory of known scenarios and their canonical estimate links. Used to detect new scenarios, updated estimates, and gaps.
 
-- `scripts/run_compare_only.py`  
+- `architecture-center/scripts/run_compare_only.py`  
   Compares cost‑ready scenarios (`criteria_passed = TRUE`) against `estimate_scenarios.xlsx` and updates the `comparison_status` column, as well as additional review/summary tabs, in `scan-results.xlsx`.
 
-- `.github/workflows/scan_and_compare.yml`  
+- `architecture-center/.github/workflows/scan_and_compare.yml`  
   GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, and uploads the artifact.
 
 ## How to get started
@@ -89,7 +86,6 @@ Copy the scanner files into the forked Architecture Center repo, preserving the 
 
 ### 3. Run via GitHub Actions
 
-- Push changes to your fork
 - Open **GitHub Actions**
 - Select **Architecture Scan + Estimate Comparison** workflow and run it
 
