@@ -3,6 +3,9 @@
 
 Design:
 - Primary question (criteria_passed): Does the included .md article contain a *usable estimate link*?
+- Usable estimate links are:
+    A) Azure Experience links: https://azure.com/e/*
+    B) Pricing Calculator shared-estimate links: https://azure.microsoft.com/pricing/calculator?...shared-estimate=*
 - If no usable estimate link:
     1) failure_reason = no_estimate_link_calculator_tool_link_only
        when a pricing calculator link exists but none match usable estimate patterns.
@@ -44,11 +47,6 @@ SHARED_ESTIMATE_RE = re.compile(
     rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*shared-estimate=[^\s\)\]\\\"']+",
     re.IGNORECASE,
 )
-SERVICE_RE = re.compile(
-    rf"https?://azure\.microsoft\.com/{LOCALE_SEG}pricing/calculator/?\?[^\s\)\]\\\"']*service=[^\s\)\]\\\"']+",
-    re.IGNORECASE,
-)
-
 # Image extraction (extension-agnostic)
 MD_INLINE_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^\)]+)\)")
 MD_REF_IMG_USE_RE = re.compile(r"!\[[^\]]*\]\[([^\]]+)\]")
@@ -195,7 +193,6 @@ def categorize_links(md_text: str) -> dict:
     calc_any = sorted(set(CALC_ANY_RE.findall(md_text)))
 
     shared_est = sorted({u for u in calc_any if SHARED_ESTIMATE_RE.search(u)})
-    service_links = sorted({u for u in calc_any if SERVICE_RE.search(u)})
 
     calc_root: List[str] = []
     calc_other: List[str] = []
@@ -212,13 +209,12 @@ def categorize_links(md_text: str) -> dict:
     shared_estimate_links = sorted(set(azure_experience_links + shared_est))
     all_matching_links = sorted(set(azure_experience_links + calc_any))
 
-    usable_estimate_links = sorted(set(azure_experience_links + shared_est + service_links))
+    usable_estimate_links = sorted(set(azure_experience_links + shared_est))
 
     return {
         'azure_experience_links': azure_experience_links,
         'calculator_root_links': calc_root,
         'calculator_shared_estimate_links': shared_est,
-        'calculator_service_links': service_links,
         'calculator_other_links': calc_other,
         'shared_estimate_links': shared_estimate_links,
         'pricing_calculator_links': calc_any,
@@ -281,7 +277,6 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
             'azure_experience_links': [],
             'calculator_root_links': [],
             'calculator_shared_estimate_links': [],
-            'calculator_service_links': [],
             'calculator_other_links': [],
             'pricing_calculator_links': [],
             'shared_estimate_links': [],

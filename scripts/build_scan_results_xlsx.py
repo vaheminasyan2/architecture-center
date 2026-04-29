@@ -5,7 +5,6 @@
 - Enforces estimate_link to ONLY be one of:
   A) https://azure.com/e/*
   B) pricing/calculator?...shared-estimate=*
-  C) pricing/calculator?...service=*
 - Adds author columns:
   - md_author_name
   - md_ms_author_name
@@ -29,7 +28,7 @@ SHARED_ESTIMATE_RE = re.compile(
 
 
 def collect_estimate_links(item: dict) -> list:
-    """Return ALL compliant estimate links (A/B/C), unique and deterministic order."""
+    """Return ALL compliant estimate links (A/B), unique and deterministic order."""
     candidates = []
     for key in (
         'usable_estimate_links',
@@ -70,7 +69,6 @@ def collect_estimate_links(item: dict) -> list:
     # stable ordering by type
     _add(AZURE_EXPERIENCE_RE)
     _add(SHARED_ESTIMATE_RE)
-    _add(SERVICE_RE)
 
     return out
 
