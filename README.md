@@ -4,6 +4,18 @@ A lightweight scanning tool used to analyze articles in the **[Azure Architectur
 
 ## What the scanner evaluates
 
+### Two content patterns in the Architecture Center
+
+The Architecture Center publishes articles using two distinct structures. The scanner handles both:
+
+**Pattern A — YML + MD (companion pair)**  
+A `.yml` file contains page metadata and a `[!INCLUDE]` directive pointing to a separate `.md` file that holds the article body. The `.yml` is the published page; the `.md` is the content source.
+
+**Pattern B — Standalone MD**  
+A single `.md` file contains both metadata (in a YAML front matter block at the top) and the full article body. There is no companion `.yml`. The `.md` file is itself the published page.
+
+Both patterns appear in the Architecture Center repo. Examples of Pattern B articles include pages under `networking/guide/` and `data-guide/disaster-recovery/` that have no associated `.yml` file. The scanner's Pass 2 picks these up by finding `.md` files with a `title` field in their front matter that are not already consumed as `[!INCLUDE]` targets by any `.yml` file.
+
 ### Primary question (pass / fail)
 
 The scanner answers the primary question: **Does the Architecture Center article include a usable pricing estimate link?**
@@ -60,7 +72,7 @@ The Excel output includes a **`needs-review`** worksheet that automatically coll
 ## Repository files and what they do
 
 - `architecture-center/scripts/scan_architecture_center_yml.py`  
-  Scans Architecture Center YAML files and their included Markdown articles. Produces `scan-results.json`.
+  Scans Architecture Center YAML files and their included Markdown articles (Pattern A), and also standalone Markdown articles that have no companion YAML file (Pattern B). Produces `scan-results.json`.
 
 - `architecture-center/scripts/build_scan_results_xlsx.py`  
   Converts `scan-results.json` into the human‑readable Excel report `scan-results.xlsx`. This is the **authoritative JSON → Excel builder** and preserves **all compliant estimate links**.
