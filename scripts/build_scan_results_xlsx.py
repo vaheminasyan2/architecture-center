@@ -13,9 +13,12 @@ Update (2026-02): If multiple compliant estimate links are found for a scenario,
 write ALL of them to the `estimate_link` cell (newline-separated). This prevents
 losing valid tiered estimates (for example Small/Medium/Large).
 
-Scope gate columns (added 2026-04):
-  in_scope            — TRUE if the scenario meets all four scope criteria.
-  out_of_scope_reason — Semicolon-separated list of failing criteria when in_scope = FALSE.
+Evaluation pipeline columns (added 2026-04) — written in gate order after estimate_link:
+  scan_status         — Gate 1: 'ok' or a structural error code (yaml_parse_failed, etc.)
+  in_scope            — Gate 2: TRUE if the scenario meets all four scope criteria.
+  out_of_scope_reason — Gate 2: Semicolon-separated failing criteria; 'scan_error' for Gate 1 failures.
+  criteria_passed     — Gate 3: TRUE if a usable pricing estimate link was found.
+  failure_reason      — Gate 3: Why criteria_passed is FALSE (or echoes scan_status for Gate 1 errors).
 """
 
 import argparse
@@ -96,6 +99,7 @@ def main():
     for it in items:
         links = collect_estimate_links(it)
         rows.append({
+            # ── Descriptive metadata ──────────────────────────────────────
             'title': it.get('title') or '',
             'description': it.get('description') or '',
             'azureCategories': '; '.join(it.get('azureCategories') or [])
@@ -104,18 +108,20 @@ def main():
             'ms.date': it.get('ms_date') or '',
             'yml_url': it.get('yml_url') or '',
             'image_download_urls': join_list(it.get('image_download_urls') or []),
-            # NEW: include all compliant estimate links (newline-separated)
+            # ── Pricing estimate ──────────────────────────────────────────
             'estimate_link': "\n".join(links),
-            'criteria_passed': bool(it.get('criteria_passed', False)),
-            'failure_reason': it.get('failure_reason') or '',
-            'yml_path': it.get('yml_path') or '',
-            'include_md_path': it.get('include_md_path') or '',
-            # ✅ NEW COLUMNS (additive only)
-            'md_author_name': it.get('md_author_github') or '',
-            'md_ms_author_name': it.get('md_ms_author') or '',
-            # Scope gate
+            # ── Evaluation pipeline (Gate 1 → 2 → 3) ─────────────────────
+            'scan_status': it.get('scan_status') or 'ok',
             'in_scope': bool(it.get('in_scope', False)),
             'out_of_scope_reason': it.get('out_of_scope_reason') or '',
+            'criteria_passed': bool(it.get('criteria_passed', False)),
+            'failure_reason': it.get('failure_reason') or '',
+            # ── Source paths ──────────────────────────────────────────────
+            'yml_path': it.get('yml_path') or '',
+            'include_md_path': it.get('include_md_path') or '',
+            # ── Authorship ────────────────────────────────────────────────
+            'md_author_name': it.get('md_author_github') or '',
+            'md_ms_author_name': it.get('md_ms_author') or '',
         })
 
     df = pd.DataFrame(rows)

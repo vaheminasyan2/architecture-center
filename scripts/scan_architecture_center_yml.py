@@ -22,15 +22,27 @@ Design:
   a 'title' field, and which are NOT already referenced as an [!INCLUDE] target by
   any scanned YML file (Pattern B: self-contained MD pages). These articles publish
   directly as Architecture Center pages without a companion YML wrapper.
-- After scanning, applies an in-scope filter as the first gate before pass/fail:
-    in_scope = TRUE  requires ALL of:
-      1. Non-blank title
-      2. Non-blank description
-      3. At least one azureCategory
-      4. At least one image reference in the article (any format, local or external)
-    Scenarios that fail any criterion get in_scope = FALSE with an out_of_scope_reason.
-    All rows are kept in the output; downstream tools restrict comparison and review
-    to in_scope = TRUE rows only.
+- Evaluation pipeline (strict sequence — each gate only runs if the previous passed):
+    Gate 1  scan_status   Did the file parse and resolve correctly?
+                          Values: ok | yaml_parse_failed | missing_content_string |
+                                  no_include_directive | include_md_unresolvable |
+                                  include_md_missing
+                          On error → in_scope=FALSE, out_of_scope_reason='scan_error',
+                          criteria_passed=FALSE. No further gates run.
+    Gate 2  in_scope      Is this a complete, valid scenario? Requires ALL of:
+                            1. Non-blank title
+                            2. Non-blank description
+                            3. At least one azureCategory
+                            4. At least one image reference in the article
+                          On failure → out_of_scope_reason lists each failing criterion
+                          (semicolon-separated), criteria_passed=FALSE. Gate 3 skipped.
+    Gate 3  criteria_passed  Does the article contain a usable pricing estimate link?
+                          Values: TRUE | FALSE
+                          failure_reason explains FALSE:
+                            no_estimate_link
+                            no_estimate_link_calculator_tool_link_only
+    All rows are kept in the output for auditability. Downstream tools restrict
+    comparison and review to in_scope=TRUE rows only.
 
 Outputs:
 - scan-results.json (always)
@@ -250,6 +262,7 @@ def extract_yaml_meta(data: dict) -> Tuple[Optional[str], Optional[str], List[st
 def _make_base_record(repo_slug: str, branch: str) -> dict:
     """Return an empty result record with all expected keys."""
     return {
+        'scan_status': 'ok',
         'criteria_passed': False,
         'failure_reason': '',
         'title': None,
@@ -282,14 +295,31 @@ def _make_base_record(repo_slug: str, branch: str) -> dict:
 
 
 
-def evaluate_scope(base: dict) -> None:
-    """Apply in-scope filter as the first gate on a fully-populated record.
+def _mark_scan_error(base: dict, error_code: str, counts: dict) -> None:
+    """Mark a record as a pipeline/structural error (Gate 1 failure).
 
+    Sets scan_status, forces in_scope=FALSE with out_of_scope_reason='scan_error',
+    and ensures criteria_passed=FALSE. The failure_reason field retains the error
+    code so it stays visible in the sheet alongside the new scan_status column.
+    """
+    base['scan_status'] = error_code
+    base['failure_reason'] = error_code   # keep legacy field populated for readability
+    base['in_scope'] = False
+    base['out_of_scope_reason'] = 'scan_error'
+    base['criteria_passed'] = False
+    counts['out_of_scope'] += 1
+    counts['failed'] += 1
+
+
+def evaluate_scope(base: dict) -> None:
+    """Gate 2 — apply in-scope filter after md content is fully populated.
+
+    Only called on records where scan_status == 'ok' (Gate 1 passed).
     A scenario is in_scope = TRUE only when ALL four criteria are met:
-      1. title        — non-blank
-      2. description  — non-blank
-      3. azureCategories — at least one entry
-      4. image_paths  — at least one image reference found in the article
+      1. title           — non-blank
+      2. description     — non-blank
+      3. azureCategories — at least one non-blank entry
+      4. image_paths     — at least one image reference found in the article
 
     Sets base['in_scope'] and base['out_of_scope_reason'] in-place.
     Multiple failing criteria are combined in out_of_scope_reason (semicolon-separated).
@@ -321,7 +351,13 @@ def _scan_md_content(
     debug: bool,
     debug_key: str,
 ):
-    """Shared logic: scan an md file's links + images and set pass/fail on *base* in-place."""
+    """Gate 3 — scan md content for links + images and set criteria_passed.
+
+    scan_status is set to 'ok' at the top; all earlier pipeline errors bypass
+    this function entirely via _mark_scan_error. evaluate_scope() (Gate 2) is
+    called at the end, after all content fields are populated.
+    """
+    base['scan_status'] = 'ok'  # Gate 1 passed — file resolved and content found
     link_info = categorize_links(md_text)
     for k, v in link_info.items():
         if k in base:
@@ -358,20 +394,23 @@ def _scan_md_content(
     if has_usable:
         base['criteria_passed'] = True
         base['failure_reason'] = ''
-        counts['passed'] += 1
     else:
         base['criteria_passed'] = False
         base['failure_reason'] = (
             'no_estimate_link_calculator_tool_link_only' if has_any_calc else 'no_estimate_link'
         )
-        counts['failed'] += 1
         if debug:
             failures.append({'path': debug_key, 'reason': base['failure_reason']})
 
-    # Apply scope gate after all content fields are populated
+    # Gate 2: apply scope filter after all content fields are populated
     evaluate_scope(base)
     if base['in_scope']:
         counts['in_scope'] += 1
+        # Gate 3 counts: only meaningful for in-scope rows
+        if base['criteria_passed']:
+            counts['passed'] += 1
+        else:
+            counts['failed'] += 1
     else:
         counts['out_of_scope'] += 1
 
@@ -414,11 +453,10 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         data = load_yaml(yml_path)
         if not isinstance(data, dict):
-            base['failure_reason'] = 'yaml_parse_failed'
+            _mark_scan_error(base, 'yaml_parse_failed', counts)
             results.append(base)
-            counts['failed'] += 1
             if debug:
-                failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason']})
+                failures.append({'yml_path': repo_rel_yml, 'reason': base['scan_status']})
             continue
 
         counts['yml_parsed'] += 1
@@ -430,20 +468,18 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         content = data.get('content')
         if not isinstance(content, str):
-            base['failure_reason'] = 'missing_content_string'
+            _mark_scan_error(base, 'missing_content_string', counts)
             results.append(base)
-            counts['failed'] += 1
             if debug:
-                failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason']})
+                failures.append({'yml_path': repo_rel_yml, 'reason': base['scan_status']})
             continue
 
         inc = INCLUDE_RE.search(content)
         if not inc:
-            base['failure_reason'] = 'no_include_directive'
+            _mark_scan_error(base, 'no_include_directive', counts)
             results.append(base)
-            counts['failed'] += 1
             if debug:
-                failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason']})
+                failures.append({'yml_path': repo_rel_yml, 'reason': base['scan_status']})
             continue
 
         counts['has_include'] += 1
@@ -451,12 +487,11 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         include_md_ref = inc.group(1)
         include_md_rel = resolve_repo_rel(yml_path.parent, include_md_ref, repo_root)
         if not include_md_rel:
-            base['failure_reason'] = 'include_md_unresolvable'
             base['include_md_path'] = include_md_ref
+            _mark_scan_error(base, 'include_md_unresolvable', counts)
             results.append(base)
-            counts['failed'] += 1
             if debug:
-                failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason'], 'include_md_ref': include_md_ref})
+                failures.append({'yml_path': repo_rel_yml, 'reason': base['scan_status'], 'include_md_ref': include_md_ref})
             continue
 
         md_file = repo_root / include_md_rel
@@ -467,11 +502,10 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         included_md_paths.add(md_file.resolve())
 
         if not md_file.exists():
-            base['failure_reason'] = 'include_md_missing'
+            _mark_scan_error(base, 'include_md_missing', counts)
             results.append(base)
-            counts['failed'] += 1
             if debug:
-                failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason'], 'include_md_path': include_md_rel})
+                failures.append({'yml_path': repo_rel_yml, 'reason': base['scan_status'], 'include_md_path': include_md_rel})
             continue
 
         counts['include_md_exists'] += 1

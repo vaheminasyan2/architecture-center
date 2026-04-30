@@ -12,6 +12,7 @@ YML_URL_COL = 'yml_url'
 CRITERIA_COL = 'criteria_passed'
 STATUS_COL = 'comparison_status'
 IN_SCOPE_COL = 'in_scope'
+SCAN_STATUS_COL = 'scan_status'
 
 # Status values
 STATUS_SAME = 'matched_existing_scenario_same_estimate'
@@ -111,14 +112,20 @@ if missing_inv:
 if STATUS_COL not in scan_df.columns:
     scan_df[STATUS_COL] = STATUS_NOT_APPLICABLE
 
-# Ensure in_scope column exists (backwards-compat if running against older scan output)
+# Ensure new columns exist (backwards-compat if running against older scan output)
+if SCAN_STATUS_COL not in scan_df.columns:
+    scan_df[SCAN_STATUS_COL] = 'ok'  # assume ok if column is absent
 if IN_SCOPE_COL not in scan_df.columns:
     scan_df[IN_SCOPE_COL] = True  # assume all in scope if column is absent
 
 # --- Scope gate ---
-# Comparison and review logic only runs on in-scope rows.
-# Out-of-scope rows get STATUS_NOT_APPLICABLE and are excluded from needs-review.
-in_scope = (
+# Rows with a scan_status error (Gate 1) are always excluded — they are structurally
+# broken files that never reached content evaluation.
+# Rows with in_scope = FALSE (Gate 2) are also excluded.
+# Only rows that pass both gates participate in comparison and needs-review.
+scan_ok = scan_df[SCAN_STATUS_COL].astype(str).str.strip().str.lower() == 'ok'
+
+in_scope = scan_ok & (
     scan_df[IN_SCOPE_COL].astype(str).str.strip().str.lower().isin(['true', '1', 'yes'])
     | (scan_df[IN_SCOPE_COL] == True)
 )
@@ -181,16 +188,22 @@ in_scope_criteria_false = total_in_scope - in_scope_criteria_true
 
 summary = pd.DataFrame({
     'Metric': [
-        # Scope breakdown
+        # Overall
         'Total scanned scenarios',
-        'In-scope scenarios',
-        'Out-of-scope scenarios',
         '',
-        # Pass/fail (in-scope only)
-        'In-scope: criteria_passed = TRUE',
-        'In-scope: criteria_passed = FALSE (pricing gap)',
+        # Gate 1 — scan_status
+        'Gate 1 PASS: scan_status = ok',
+        'Gate 1 FAIL: scan_status = error (structural pipeline errors)',
         '',
-        # Comparison status (in-scope only)
+        # Gate 2 — in_scope (of scan_ok rows)
+        'Gate 2 PASS: in_scope = TRUE',
+        'Gate 2 FAIL: in_scope = FALSE (missing title / description / category / image)',
+        '',
+        # Gate 3 — criteria_passed (of in_scope rows)
+        'Gate 3 PASS: criteria_passed = TRUE (has usable estimate link)',
+        'Gate 3 FAIL: criteria_passed = FALSE (pricing gap)',
+        '',
+        # Comparison status (in-scope + criteria_passed = TRUE rows only)
         'matched_existing_scenario_same_estimate',
         'matched_existing_scenario_new_estimate',
         'new_estimate_candidate',
@@ -205,6 +218,10 @@ summary = pd.DataFrame({
     ],
     'Value': [
         total,
+        '',
+        int(scan_ok.sum()),
+        int((~scan_ok).sum()),
+        '',
         total_in_scope,
         total_out_of_scope,
         '',
