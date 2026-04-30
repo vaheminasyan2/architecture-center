@@ -17,7 +17,11 @@ Design:
 - Restores Author and MS Author:
     * md_author_github (MD front matter author; else YAML author)
     * md_ms_author     (MD front matter ms.author; else YAML ms.author)
-- Scans both *.yml and *.yaml under docs-root.
+- Scans both *.yml and *.yaml under docs-root (Pattern A: YML+MD with [!INCLUDE]).
+- Also scans standalone *.md files under docs-root whose YAML front matter contains
+  a 'title' field, and which are NOT already referenced as an [!INCLUDE] target by
+  any scanned YML file (Pattern B: self-contained MD pages). These articles publish
+  directly as Architecture Center pages without a companion YML wrapper.
 
 Outputs:
 - scan-results.json (always)
@@ -112,11 +116,11 @@ def make_github_blob_url(repo_slug: str, branch: str, repo_rel_path: str) -> str
     return f"https://github.com/{repo_slug}/blob/{branch}/{repo_rel_path.lstrip('/')}"
 
 
-def make_learn_url_from_docs_path(repo_rel_yml: str) -> str:
-    p = repo_rel_yml.replace('\\', '/')
+def make_learn_url_from_docs_path(repo_rel_path: str) -> str:
+    p = repo_rel_path.replace('\\', '/')
     if p.startswith('docs/'):
         p = p[len('docs/'):]
-    for ext in ('.yml', '.yaml'):
+    for ext in ('.yml', '.yaml', '.md'):
         if p.lower().endswith(ext):
             p = p[:-len(ext)]
             break
@@ -234,6 +238,97 @@ def extract_yaml_meta(data: dict) -> Tuple[Optional[str], Optional[str], List[st
     return title, description, azure_categories, author, ms_author, ms_date
 
 
+def _make_base_record(repo_slug: str, branch: str) -> dict:
+    """Return an empty result record with all expected keys."""
+    return {
+        'criteria_passed': False,
+        'failure_reason': '',
+        'title': None,
+        'description': None,
+        'azureCategories': [],
+        'ms_date': None,
+        'yml_url': None,
+        'yml_github_url': None,
+        'yml_path': None,
+        'include_md_path': None,
+        'include_md_github_url': None,
+        'md_author_github': None,
+        'md_ms_author': None,
+        'image_paths': [],
+        'image_download_urls': [],
+        'image_exists_in_repo': [],
+        'image_formats': [],
+        'azure_experience_links': [],
+        'calculator_root_links': [],
+        'calculator_shared_estimate_links': [],
+        'calculator_other_links': [],
+        'pricing_calculator_links': [],
+        'shared_estimate_links': [],
+        'all_matching_links': [],
+        'usable_estimate_links': [],
+    }
+
+
+def _scan_md_content(
+    base: dict,
+    md_file: Path,
+    md_text: str,
+    repo_root: Path,
+    repo_slug: str,
+    branch: str,
+    counts: dict,
+    failures: list,
+    debug: bool,
+    debug_key: str,
+):
+    """Shared logic: scan an md file's links + images and set pass/fail on *base* in-place."""
+    link_info = categorize_links(md_text)
+    for k, v in link_info.items():
+        if k in base:
+            base[k] = v
+
+    has_any_calc = bool(link_info.get('pricing_calculator_links'))
+    has_usable = bool(link_info.get('usable_estimate_links'))
+    if has_any_calc:
+        counts['md_has_any_calc_link'] += 1
+    if has_usable:
+        counts['md_has_usable_estimate_link'] += 1
+
+    img_refs = extract_image_refs(md_text)
+    image_paths: List[str] = []
+    image_download_urls: List[str] = []
+    image_exists: List[bool] = []
+    image_formats: List[str] = []
+    for raw in img_refs:
+        cleaned = clean_ref(raw)
+        img_rel = resolve_repo_rel(md_file.parent, cleaned, repo_root)
+        if img_rel is None:
+            img_rel = strip_query_fragment(cleaned).lstrip('/')
+        image_paths.append(img_rel)
+        image_download_urls.append(make_raw_url(repo_slug, branch, img_rel))
+        exists = bool((repo_root / img_rel).exists())
+        image_exists.append(exists)
+        image_formats.append(Path(img_rel).suffix.lower().lstrip('.'))
+
+    base['image_paths'] = image_paths
+    base['image_download_urls'] = image_download_urls
+    base['image_exists_in_repo'] = image_exists
+    base['image_formats'] = image_formats
+
+    if has_usable:
+        base['criteria_passed'] = True
+        base['failure_reason'] = ''
+        counts['passed'] += 1
+    else:
+        base['criteria_passed'] = False
+        base['failure_reason'] = (
+            'no_estimate_link_calculator_tool_link_only' if has_any_calc else 'no_estimate_link'
+        )
+        counts['failed'] += 1
+        if debug:
+            failures.append({'path': debug_key, 'reason': base['failure_reason']})
+
+
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
     docs_path = repo_root / docs_root
     yml_files = list(docs_path.rglob('*.yml')) + list(docs_path.rglob('*.yaml'))
@@ -244,6 +339,8 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'yml_parsed': 0,
         'has_include': 0,
         'include_md_exists': 0,
+        'standalone_md_total': 0,
+        'standalone_md_scanned': 0,
         'md_has_any_calc_link': 0,
         'md_has_usable_estimate_link': 0,
         'passed': 0,
@@ -253,36 +350,18 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
     failures = []
     results = []
 
+    # --- Pass 1: YML+MD pattern (existing behaviour) ---
+    # Track every .md path that is consumed as an [!INCLUDE] target so we can
+    # exclude them from the standalone-MD pass below.
+    included_md_paths: set = set()  # resolved absolute paths
+
     for yml_path in yml_files:
         repo_rel_yml = yml_path.relative_to(repo_root).as_posix()
 
-        base = {
-            'criteria_passed': False,
-            'failure_reason': '',
-            'title': None,
-            'description': None,
-            'azureCategories': [],
-            'ms_date': None,
-            'yml_url': make_learn_url_from_docs_path(repo_rel_yml),
-            'yml_github_url': make_github_blob_url(repo_slug, branch, repo_rel_yml),
-            'yml_path': repo_rel_yml,
-            'include_md_path': None,
-            'include_md_github_url': None,
-            'md_author_github': None,
-            'md_ms_author': None,
-            'image_paths': [],
-            'image_download_urls': [],
-            'image_exists_in_repo': [],
-            'image_formats': [],
-            'azure_experience_links': [],
-            'calculator_root_links': [],
-            'calculator_shared_estimate_links': [],
-            'calculator_other_links': [],
-            'pricing_calculator_links': [],
-            'shared_estimate_links': [],
-            'all_matching_links': [],
-            'usable_estimate_links': [],
-        }
+        base = _make_base_record(repo_slug, branch)
+        base['yml_url'] = make_learn_url_from_docs_path(repo_rel_yml)
+        base['yml_github_url'] = make_github_blob_url(repo_slug, branch, repo_rel_yml)
+        base['yml_path'] = repo_rel_yml
 
         data = load_yaml(yml_path)
         if not isinstance(data, dict):
@@ -334,6 +413,10 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         md_file = repo_root / include_md_rel
         base['include_md_path'] = include_md_rel
         base['include_md_github_url'] = make_github_blob_url(repo_slug, branch, include_md_rel)
+
+        # Register this md as consumed so the standalone pass skips it
+        included_md_paths.add(md_file.resolve())
+
         if not md_file.exists():
             base['failure_reason'] = 'include_md_missing'
             results.append(base)
@@ -346,60 +429,61 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
 
         md_text = md_file.read_text(encoding='utf-8', errors='ignore')
 
-        # Restore Author/MS Author
         fm = parse_md_front_matter(md_text)
         base['md_author_github'] = (fm.get('author') if isinstance(fm, dict) else None) or y_author
         base['md_ms_author'] = (fm.get('ms.author') if isinstance(fm, dict) else None) or y_ms_author
 
-        # Populate link buckets (used for estimate logic + output)
-        link_info = categorize_links(md_text)
-        for k, v in link_info.items():
-            if k in base:
-                base[k] = v
+        _scan_md_content(base, md_file, md_text, repo_root, repo_slug, branch,
+                         counts, failures, debug, repo_rel_yml)
+        results.append(base)
 
-        has_any_calc = bool(link_info.get('pricing_calculator_links'))
-        has_usable = bool(link_info.get('usable_estimate_links'))
-        if has_any_calc:
-            counts['md_has_any_calc_link'] += 1
-        if has_usable:
-            counts['md_has_usable_estimate_link'] += 1
+    # --- Pass 2: Standalone MD pattern ---
+    # These are .md files that publish as their own Architecture Center page,
+    # identified by having a YAML front matter block with a 'title' field.
+    # Files already consumed as [!INCLUDE] targets are excluded.
+    all_md_files = sorted(
+        {p.resolve(): p for p in docs_path.rglob('*.md')}.values(),
+        key=lambda p: str(p),
+    )
+    counts['standalone_md_total'] = sum(
+        1 for p in all_md_files if p.resolve() not in included_md_paths
+    )
 
-        # Always populate images for the article (but images do NOT affect pass/fail)
-        img_refs = extract_image_refs(md_text)
-        image_paths: List[str] = []
-        image_download_urls: List[str] = []
-        image_exists: List[bool] = []
-        image_formats: List[str] = []
-        for raw in img_refs:
-            cleaned = clean_ref(raw)
-            img_rel = resolve_repo_rel(md_file.parent, cleaned, repo_root)
-            if img_rel is None:
-                img_rel = strip_query_fragment(cleaned).lstrip('/')
-            image_paths.append(img_rel)
-            image_download_urls.append(make_raw_url(repo_slug, branch, img_rel))
-            exists = bool((repo_root / img_rel).exists())
-            image_exists.append(exists)
-            image_formats.append(Path(img_rel).suffix.lower().lstrip('.'))
+    for md_path in all_md_files:
+        if md_path.resolve() in included_md_paths:
+            continue  # already handled in Pass 1
 
-        base['image_paths'] = image_paths
-        base['image_download_urls'] = image_download_urls
-        base['image_exists_in_repo'] = image_exists
-        base['image_formats'] = image_formats
+        md_text = md_path.read_text(encoding='utf-8', errors='ignore')
+        fm = parse_md_front_matter(md_text)
 
-        # Pass/fail based ONLY on usable estimate link presence
-        if has_usable:
-            base['criteria_passed'] = True
-            base['failure_reason'] = ''
-            results.append(base)
-            counts['passed'] += 1
+        # Only treat as a valid scenario page if front matter has a title.
+        # This filters out index pages, partial includes, and non-article md files.
+        if not isinstance(fm, dict) or not fm.get('title'):
             continue
 
-        base['criteria_passed'] = False
-        base['failure_reason'] = 'no_estimate_link_calculator_tool_link_only' if has_any_calc else 'no_estimate_link'
+        counts['standalone_md_scanned'] += 1
+        repo_rel_md = md_path.relative_to(repo_root).as_posix()
+
+        base = _make_base_record(repo_slug, branch)
+        # For standalone MDs, yml_url is derived from the .md path itself.
+        # yml_path is set to the md path so downstream tools (run_compare_only)
+        # can use it for matching; include_md_path mirrors it for consistency.
+        base['yml_url'] = make_learn_url_from_docs_path(repo_rel_md)
+        base['yml_github_url'] = make_github_blob_url(repo_slug, branch, repo_rel_md)
+        base['yml_path'] = repo_rel_md          # the .md IS the page source
+        base['include_md_path'] = repo_rel_md   # same file — content is here
+        base['include_md_github_url'] = make_github_blob_url(repo_slug, branch, repo_rel_md)
+
+        base['title'] = fm.get('title')
+        base['description'] = fm.get('description')
+        base['azureCategories'] = as_list(fm.get('ms.service') or fm.get('azureCategories'))
+        base['ms_date'] = fm.get('ms.date')
+        base['md_author_github'] = fm.get('author')
+        base['md_ms_author'] = fm.get('ms.author')
+
+        _scan_md_content(base, md_path, md_text, repo_root, repo_slug, branch,
+                         counts, failures, debug, repo_rel_md)
         results.append(base)
-        counts['failed'] += 1
-        if debug:
-            failures.append({'yml_path': repo_rel_yml, 'reason': base['failure_reason'], 'include_md_path': include_md_rel})
 
     return results, counts, failures
 
@@ -428,8 +512,9 @@ def main():
 
     Path(args.output).write_text(json.dumps(out, indent=2), encoding='utf-8')
     print(
-        f"Scanning docs_root={args.docs_root}: yml_total={counts['yml_total']}; wrote={len(items)}; "
-        f"passed={counts['passed']}; failed={counts['failed']}; "
+        f"Scanning docs_root={args.docs_root}: yml_total={counts['yml_total']}; "
+        f"standalone_md_scanned={counts['standalone_md_scanned']}; "
+        f"wrote={len(items)}; passed={counts['passed']}; failed={counts['failed']}; "
         f"md_has_any_calc_link={counts['md_has_any_calc_link']}; md_has_usable_estimate_link={counts['md_has_usable_estimate_link']}"
     )
 
