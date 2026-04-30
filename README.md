@@ -16,7 +16,26 @@ A single `.md` file contains both metadata (in a YAML front matter block at the 
 
 Both patterns appear in the Architecture Center repo. Examples of Pattern B articles include pages under `networking/guide/` and `data-guide/disaster-recovery/` that have no associated `.yml` file. The scanner's Pass 2 picks these up by finding `.md` files with a `title` field in their front matter that are not already consumed as `[!INCLUDE]` targets by any `.yml` file.
 
-### Primary question (pass / fail)
+### Evaluation pipeline
+
+The scanner applies its checks in strict order:
+
+1. **Scope filter** — Is this a valid, complete scenario? (`in_scope`)
+2. **Pass/fail** — Does it have a usable pricing estimate link? (`criteria_passed`) — *in-scope rows only*
+3. **Comparison** — Is the estimate already in the inventory, or is it new/drifted? (`comparison_status`) — *in-scope + criteria_passed = TRUE rows only*
+
+### Step 1 — Scope filter (in / out of scope)
+
+Before any pass/fail evaluation runs, the scanner applies a scope filter. A scenario is **in scope (`in_scope = TRUE`)** only when **all four** of the following are present:
+
+1. **Non-blank title** — pulled from the YML metadata or MD front matter
+2. **Non-blank description** — same source
+3. **At least one Azure category** — `azureCategories` must have at least one entry
+4. **At least one architecture image** — at least one image reference (`:::image`, `![]()`, `<img>`, etc.) must appear anywhere in the article body, in any format and whether local or externally hosted
+
+Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` that lists each failing criterion (semicolon-separated). **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the `needs-review` tab.
+
+### Step 2 — Primary question (pass / fail)
 
 The scanner answers the primary question: **Does the Architecture Center article include a usable pricing estimate link?**
 
@@ -114,7 +133,9 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - **yml_url** — Published Architecture Center article URL
 - **image_download_urls** — Images found in the article (informational)
 - **estimate_link** — One or more usable estimate links (newline‑separated)
-- **criteria_passed** — Pricing readiness indicator
+- **in_scope** — `TRUE` if the scenario passes all four scope criteria; `FALSE` otherwise
+- **out_of_scope_reason** — Semicolon-separated list of failing scope criteria (blank when `in_scope = TRUE`)
+- **criteria_passed** — Pricing readiness indicator (`in_scope = TRUE` rows only)
 - **failure_reason** — Why the scenario failed (if applicable)
 - **comparison_status** — Estimate comparison result
 - **yml_path** — Path to the scenario YAML file
@@ -123,5 +144,6 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 
 ### How to use the results
 
-- Treat `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
+- Treat `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
+- Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
