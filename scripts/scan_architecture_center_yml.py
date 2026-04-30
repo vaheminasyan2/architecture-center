@@ -22,6 +22,15 @@ Design:
   a 'title' field, and which are NOT already referenced as an [!INCLUDE] target by
   any scanned YML file (Pattern B: self-contained MD pages). These articles publish
   directly as Architecture Center pages without a companion YML wrapper.
+- After scanning, applies an in-scope filter as the first gate before pass/fail:
+    in_scope = TRUE  requires ALL of:
+      1. Non-blank title
+      2. Non-blank description
+      3. At least one azureCategory
+      4. At least one image reference in the article (any format, local or external)
+    Scenarios that fail any criterion get in_scope = FALSE with an out_of_scope_reason.
+    All rows are kept in the output; downstream tools restrict comparison and review
+    to in_scope = TRUE rows only.
 
 Outputs:
 - scan-results.json (always)
@@ -266,7 +275,38 @@ def _make_base_record(repo_slug: str, branch: str) -> dict:
         'shared_estimate_links': [],
         'all_matching_links': [],
         'usable_estimate_links': [],
+        # Scope gate — populated after md content is scanned
+        'in_scope': False,
+        'out_of_scope_reason': '',
     }
+
+
+
+def evaluate_scope(base: dict) -> None:
+    """Apply in-scope filter as the first gate on a fully-populated record.
+
+    A scenario is in_scope = TRUE only when ALL four criteria are met:
+      1. title        — non-blank
+      2. description  — non-blank
+      3. azureCategories — at least one entry
+      4. image_paths  — at least one image reference found in the article
+
+    Sets base['in_scope'] and base['out_of_scope_reason'] in-place.
+    Multiple failing criteria are combined in out_of_scope_reason (semicolon-separated).
+    """
+    reasons = []
+    if not str(base.get('title') or '').strip():
+        reasons.append('blank_title')
+    if not str(base.get('description') or '').strip():
+        reasons.append('blank_description')
+    cats = base.get('azureCategories') or []
+    if not any(str(c).strip() for c in cats):
+        reasons.append('blank_category')
+    if not base.get('image_paths'):
+        reasons.append('no_architecture_image')
+
+    base['in_scope'] = len(reasons) == 0
+    base['out_of_scope_reason'] = '; '.join(reasons)
 
 
 def _scan_md_content(
@@ -328,6 +368,13 @@ def _scan_md_content(
         if debug:
             failures.append({'path': debug_key, 'reason': base['failure_reason']})
 
+    # Apply scope gate after all content fields are populated
+    evaluate_scope(base)
+    if base['in_scope']:
+        counts['in_scope'] += 1
+    else:
+        counts['out_of_scope'] += 1
+
 
 def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bool):
     docs_path = repo_root / docs_root
@@ -343,6 +390,8 @@ def scan(repo_root: Path, repo_slug: str, branch: str, docs_root: str, debug: bo
         'standalone_md_scanned': 0,
         'md_has_any_calc_link': 0,
         'md_has_usable_estimate_link': 0,
+        'in_scope': 0,
+        'out_of_scope': 0,
         'passed': 0,
         'failed': 0,
     }
@@ -514,7 +563,8 @@ def main():
     print(
         f"Scanning docs_root={args.docs_root}: yml_total={counts['yml_total']}; "
         f"standalone_md_scanned={counts['standalone_md_scanned']}; "
-        f"wrote={len(items)}; passed={counts['passed']}; failed={counts['failed']}; "
+        f"wrote={len(items)}; in_scope={counts['in_scope']}; out_of_scope={counts['out_of_scope']}; "
+        f"passed={counts['passed']}; failed={counts['failed']}; "
         f"md_has_any_calc_link={counts['md_has_any_calc_link']}; md_has_usable_estimate_link={counts['md_has_usable_estimate_link']}"
     )
 

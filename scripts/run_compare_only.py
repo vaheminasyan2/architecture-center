@@ -11,6 +11,7 @@ ESTIMATE_LINK_COL = 'estimate_link'
 YML_URL_COL = 'yml_url'
 CRITERIA_COL = 'criteria_passed'
 STATUS_COL = 'comparison_status'
+IN_SCOPE_COL = 'in_scope'
 
 # Status values
 STATUS_SAME = 'matched_existing_scenario_same_estimate'
@@ -110,7 +111,22 @@ if missing_inv:
 if STATUS_COL not in scan_df.columns:
     scan_df[STATUS_COL] = STATUS_NOT_APPLICABLE
 
-# Normalize criteria_passed (supports bool or string)
+# Ensure in_scope column exists (backwards-compat if running against older scan output)
+if IN_SCOPE_COL not in scan_df.columns:
+    scan_df[IN_SCOPE_COL] = True  # assume all in scope if column is absent
+
+# --- Scope gate ---
+# Comparison and review logic only runs on in-scope rows.
+# Out-of-scope rows get STATUS_NOT_APPLICABLE and are excluded from needs-review.
+in_scope = (
+    scan_df[IN_SCOPE_COL].astype(str).str.strip().str.lower().isin(['true', '1', 'yes'])
+    | (scan_df[IN_SCOPE_COL] == True)
+)
+
+# Out-of-scope rows always get not_applicable — no further evaluation
+scan_df.loc[~in_scope, STATUS_COL] = STATUS_NOT_APPLICABLE
+
+# --- criteria_passed gate (within in-scope rows only) ---
 criteria_true = (
     scan_df[CRITERIA_COL].astype(str).str.strip().str.lower().isin(['true', '1', 'yes'])
     | (scan_df[CRITERIA_COL] == True)
@@ -133,12 +149,15 @@ for _, row in est_df.iterrows():
 
 matched_in_inventory = scan_df['_scenario_key'].isin(inv_map.keys())
 
-# Default statuses to preserve previous behavior
-scan_df.loc[~criteria_true, STATUS_COL] = STATUS_NOT_APPLICABLE
-scan_df.loc[criteria_true & ~matched_in_inventory, STATUS_COL] = STATUS_NEW_CANDIDATE
+# Within in-scope rows: apply criteria_passed -> comparison_status logic
+in_scope_no_criteria = in_scope & ~criteria_true
+in_scope_criteria_new = in_scope & criteria_true & ~matched_in_inventory
 
-# Split matched existing scenario into SAME vs NEW estimate link
-applicable = criteria_true & matched_in_inventory
+scan_df.loc[in_scope_no_criteria, STATUS_COL] = STATUS_NOT_APPLICABLE
+scan_df.loc[in_scope_criteria_new, STATUS_COL] = STATUS_NEW_CANDIDATE
+
+# Split matched existing scenario into SAME vs NEW estimate link (in-scope only)
+applicable = in_scope & criteria_true & matched_in_inventory
 
 for idx, row in scan_df.loc[applicable].iterrows():
     inv_link = inv_map.get(row['_scenario_key'], '')
@@ -148,34 +167,63 @@ for idx, row in scan_df.loc[applicable].iterrows():
     else:
         scan_df.at[idx, STATUS_COL] = STATUS_NEW_ESTIMATE
 
-# New tab request: include rows with these statuses
-needs_review = scan_df[scan_df[STATUS_COL].isin([STATUS_NEW_ESTIMATE, STATUS_NEW_CANDIDATE])].copy()
+# needs-review: in-scope rows only that require follow-up action
+needs_review = scan_df[
+    in_scope & scan_df[STATUS_COL].isin([STATUS_NEW_ESTIMATE, STATUS_NEW_CANDIDATE])
+].copy()
 
-# Summary
+# --- Summary ---
+total = len(scan_df)
+total_in_scope = int(in_scope.sum())
+total_out_of_scope = total - total_in_scope
+in_scope_criteria_true = int((in_scope & criteria_true).sum())
+in_scope_criteria_false = total_in_scope - in_scope_criteria_true
+
 summary = pd.DataFrame({
     'Metric': [
+        # Scope breakdown
         'Total scanned scenarios',
-        'Scenarios criteria_passed = TRUE',
-        'Scenarios not in inventory (new_estimate_candidate)',
+        'In-scope scenarios',
+        'Out-of-scope scenarios',
+        '',
+        # Pass/fail (in-scope only)
+        'In-scope: criteria_passed = TRUE',
+        'In-scope: criteria_passed = FALSE (pricing gap)',
+        '',
+        # Comparison status (in-scope only)
         'matched_existing_scenario_same_estimate',
         'matched_existing_scenario_new_estimate',
+        'new_estimate_candidate',
+        'not_applicable (in-scope, no usable estimate)',
+        '',
+        # Review queue
         'Rows in needs-review tab',
+        '',
+        # Run metadata
         'Scan date (UTC)',
-        'Repo commit'
+        'Repo commit',
     ],
     'Value': [
-        int(len(scan_df)),
-        int(criteria_true.sum()),
-        int((scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE).sum()),
+        total,
+        total_in_scope,
+        total_out_of_scope,
+        '',
+        in_scope_criteria_true,
+        in_scope_criteria_false,
+        '',
         int((scan_df[STATUS_COL] == STATUS_SAME).sum()),
         int((scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE).sum()),
+        int((scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE).sum()),
+        int((in_scope & (scan_df[STATUS_COL] == STATUS_NOT_APPLICABLE)).sum()),
+        '',
         int(len(needs_review)),
+        '',
         datetime.utcnow().isoformat(),
-        os.getenv('GITHUB_SHA', 'local')
+        os.getenv('GITHUB_SHA', 'local'),
     ]
 })
 
 with pd.ExcelWriter(SCAN_RESULTS_PATH, engine='openpyxl', mode='w') as writer:
     scan_df.drop(columns=['_scenario_key']).to_excel(writer, sheet_name='scan-results', index=False)
-    needs_review.to_excel(writer, sheet_name='needs-review', index=False)
+    needs_review.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='needs-review', index=False)
     summary.to_excel(writer, sheet_name='summary', index=False)

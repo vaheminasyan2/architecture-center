@@ -12,6 +12,10 @@
 Update (2026-02): If multiple compliant estimate links are found for a scenario,
 write ALL of them to the `estimate_link` cell (newline-separated). This prevents
 losing valid tiered estimates (for example Small/Medium/Large).
+
+Scope gate columns (added 2026-04):
+  in_scope            — TRUE if the scenario meets all four scope criteria.
+  out_of_scope_reason — Semicolon-separated list of failing criteria when in_scope = FALSE.
 """
 
 import argparse
@@ -109,6 +113,9 @@ def main():
             # ✅ NEW COLUMNS (additive only)
             'md_author_name': it.get('md_author_github') or '',
             'md_ms_author_name': it.get('md_ms_author') or '',
+            # Scope gate
+            'in_scope': bool(it.get('in_scope', False)),
+            'out_of_scope_reason': it.get('out_of_scope_reason') or '',
         })
 
     df = pd.DataFrame(rows)
