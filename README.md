@@ -18,13 +18,21 @@ Both patterns appear in the Architecture Center repo. Examples of Pattern B arti
 
 ### Evaluation pipeline
 
-The scanner applies its checks in strict order:
+The scanner applies three gates in strict sequence. Each gate only runs if the previous one passed. All rows are kept in the output regardless of which gate they stopped at.
 
-1. **Scope filter** — Is this a valid, complete scenario? (`in_scope`)
-2. **Pass/fail** — Does it have a usable pricing estimate link? (`criteria_passed`) — *in-scope rows only*
-3. **Comparison** — Is the estimate already in the inventory, or is it new/drifted? (`comparison_status`) — *in-scope + criteria_passed = TRUE rows only*
+| Gate | Column | Question | Stops here if… |
+|---|---|---|---|
+| **1** | `scan_status` | Did the file parse and resolve correctly? | File is broken or missing — `scan_status` = error code |
+| **2** | `in_scope` | Is this a complete, valid scenario? | Any of the four scope criteria are missing — `in_scope = FALSE` |
+| **3** | `criteria_passed` | Does the article contain a usable pricing estimate link? | No valid estimate link found — `criteria_passed = FALSE` |
 
-### Step 1 — Scope filter (in / out of scope)
+Comparison (`comparison_status`) only runs on rows that reach and pass Gate 3.
+
+### Gate 1 — Scan status
+
+Before any content evaluation, the scanner checks whether each file could actually be parsed and resolved. A record receives `scan_status = ok` only if the YML file parsed successfully, contained a valid `[!INCLUDE]` directive, and the referenced `.md` file exists and was readable. Any structural failure sets `scan_status` to a specific error code (e.g. `yaml_parse_failed`, `missing_content_string`, `include_md_missing`), forces `in_scope = FALSE` with `out_of_scope_reason = scan_error`, and stops evaluation. These rows appear in the output for auditability.
+
+### Gate 2 — Scope filter (in / out of scope)
 
 Before any pass/fail evaluation runs, the scanner applies a scope filter. A scenario is **in scope (`in_scope = TRUE`)** only when **all four** of the following are present:
 
@@ -35,7 +43,7 @@ Before any pass/fail evaluation runs, the scanner applies a scope filter. A scen
 
 Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` that lists each failing criterion (semicolon-separated). **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the `needs-review` tab.
 
-### Step 2 — Primary question (pass / fail)
+### Gate 3 — Primary question (pass / fail)
 
 The scanner answers the primary question: **Does the Architecture Center article include a usable pricing estimate link?**
 
@@ -133,8 +141,9 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - **yml_url** — Published Architecture Center article URL
 - **image_download_urls** — Images found in the article (informational)
 - **estimate_link** — One or more usable estimate links (newline‑separated)
-- **in_scope** — `TRUE` if the scenario passes all four scope criteria; `FALSE` otherwise
-- **out_of_scope_reason** — Semicolon-separated list of failing scope criteria (blank when `in_scope = TRUE`)
+- **scan_status** — `ok` if the file parsed and resolved correctly; otherwise a structural error code (`yaml_parse_failed`, `missing_content_string`, `no_include_directive`, `include_md_unresolvable`, `include_md_missing`)
+- **in_scope** — `TRUE` if the scenario passes all four scope criteria; `FALSE` otherwise (`scan_status = ok` rows only)
+- **out_of_scope_reason** — Why the scenario is out of scope: semicolon-separated failing criteria, or `scan_error` for Gate 1 failures
 - **criteria_passed** — Pricing readiness indicator (`in_scope = TRUE` rows only)
 - **failure_reason** — Why the scenario failed (if applicable)
 - **comparison_status** — Estimate comparison result
@@ -144,6 +153,7 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 
 ### How to use the results
 
-- Treat `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
+- Treat `scan_status != ok` rows as **structural file issues** — the YML or MD file has a problem that needs fixing before the scenario can be evaluated at all.
+- Treat `scan_status = ok` + `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
