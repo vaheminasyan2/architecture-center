@@ -30,7 +30,7 @@ The following [cloud design patterns](../../patterns/index.md) are frequently us
 
 | Pattern | Summary |
 | ------- | ------- |
-| [Deployment Stamps pattern](../../patterns/deployment-stamp.yml) | Deploy multiple independent copies (or scale units) of application components, including data stores. |
+| [Deployment Stamps pattern](../../patterns/deployment-stamp.md) | Deploy multiple independent copies (or scale units) of application components, including data stores. |
 | [Federated Identity](../../patterns/federated-identity.yml) | Delegate authentication to an external identity provider. |
 | [Gatekeeper](../../patterns/gatekeeper.yml) | Protect applications and services by using a dedicated host instance that serves as a broker between clients and the application or service, validates and sanitizes requests, and passes requests and data between them. |
 | [Queue-Based Load Leveling](../../patterns/queue-based-load-leveling.yml) | Use a queue that serves as a buffer between a task and a service that it invokes in order to smooth intermittent heavy loads. |
@@ -100,8 +100,6 @@ Use the following resources to help you build multitenant architectures on Azure
 - [Horizontal, vertical, and functional data partitioning](../../best-practices/data-partitioning.yml): In many large-scale and multitenant solutions, data is divided into partitions that can be managed and accessed separately. Partitioning can improve scalability, reduce contention, and optimize performance. It can also provide a mechanism for dividing data, by the usage pattern and by the tenant.
 
 - [Data partitioning strategies by Azure service](../../best-practices/data-partitioning-strategies.yml): This article describes some strategies for partitioning data in various Azure data stores.
-
-- [Build multitenant applications with Azure Database for PostgreSQL Hyperscale Citus](https://www.youtube.com/watch?v=7gAW08du6kk) (video)
 
 - [Multitenant applications with Azure Cosmos DB](https://www.youtube.com/watch?v=fOQoQnQqwwU) (video)
 
