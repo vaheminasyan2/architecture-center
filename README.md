@@ -30,7 +30,15 @@ Comparison (`comparison_status`) only runs on rows that reach and pass Gate 3.
 
 ### Gate 1 — Scan status
 
-Before any content evaluation, the scanner checks whether each file could actually be parsed and resolved. A record receives `scan_status = ok` only if the YML file parsed successfully, contained a valid `[!INCLUDE]` directive, and the referenced `.md` file exists and was readable. Any structural failure sets `scan_status` to a specific error code (e.g. `yaml_parse_failed`, `missing_content_string`, `include_md_missing`), forces `in_scope = FALSE` with `out_of_scope_reason = scan_error`, and stops evaluation. These rows appear in the output for auditability.
+Before any content evaluation, the scanner checks whether each file could actually be parsed and resolved. A record receives `scan_status = ok` only if the file parsed successfully and all content resolved correctly. Any structural failure sets `scan_status` to one of the error codes below, forces `in_scope = FALSE` with `out_of_scope_reason = scan_error`, and stops all further evaluation. These rows are kept in the output for auditability.
+
+| `scan_status` error code | Applies to | What it means | Common cause |
+|---|---|---|---|
+| `yaml_parse_failed` | Pattern A (YML+MD) | The `.yml` file exists but could not be parsed as valid YAML, or its top-level value is not a dictionary | Syntax errors, encoding issues, or a non-article YAML file (e.g. a `toc.yml` or `docfx.json` picked up by the glob) |
+| `missing_content_string` | Pattern A (YML+MD) | The `.yml` file parsed successfully but contains no `content` key, or its value is not a string | The YML file is a metadata-only or config file rather than an article wrapper; or the `content` field is structured as a list instead of a string |
+| `no_include_directive` | Pattern A (YML+MD) | The `content` string was found but contains no `[!INCLUDE]` directive pointing to an `.md` file | The YML embeds its article body directly as inline text instead of referencing a companion `.md` file, which is an uncommon but valid authoring pattern the scanner does not process |
+| `include_md_unresolvable` | Pattern A (YML+MD) | An `[!INCLUDE]` directive was found but the referenced path could not be resolved to a location within the repo | The path in the directive is malformed, uses an unsupported syntax, or points outside the `docs` root |
+| `include_md_missing` | Pattern A (YML+MD) | The `[!INCLUDE]` path resolved correctly but no file exists at that location on disk | The companion `.md` file was deleted, renamed, or never committed; or the YML references a file in a different branch |
 
 ### Gate 2 — Scope filter (in / out of scope)
 
@@ -141,7 +149,7 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - **yml_url** — Published Architecture Center article URL
 - **image_download_urls** — Images found in the article (informational)
 - **estimate_link** — One or more usable estimate links (newline‑separated)
-- **scan_status** — `ok` if the file parsed and resolved correctly; otherwise a structural error code (`yaml_parse_failed`, `missing_content_string`, `no_include_directive`, `include_md_unresolvable`, `include_md_missing`)
+- **scan_status** — `ok` if the file parsed and resolved correctly; otherwise one of five structural error codes (see [Gate 1 — Scan status](#gate-1--scan-status) for the full description of each)
 - **in_scope** — `TRUE` if the scenario passes all four scope criteria; `FALSE` otherwise (`scan_status = ok` rows only)
 - **out_of_scope_reason** — Why the scenario is out of scope: semicolon-separated failing criteria, or `scan_error` for Gate 1 failures
 - **criteria_passed** — Pricing readiness indicator (`in_scope = TRUE` rows only)
