@@ -22,6 +22,7 @@ jobs:
           python -m py_compile scripts/scan_architecture_center_yml.py
           python -m py_compile scripts/build_scan_results_xlsx.py
           python -m py_compile scripts/run_compare_only.py
+          python -m py_compile scripts/run_inventory_health.py
 
       # 1) Run the real scanner -> JSON
       - name: Run scanner (YML-based)
@@ -34,6 +35,12 @@ jobs:
       # 3) Compare against estimate_scenarios.xlsx (must exist in repo root)
       - name: Compare with estimate scenarios
         run: python scripts/run_compare_only.py
+
+      # 4) Inventory health check — reverse lookup + HTTP liveness for all
+      #    scenarios already in estimate_scenarios.xlsx.
+      #    --throttle controls the delay (seconds) between HTTP requests.
+      - name: Run inventory health check
+        run: python scripts/run_inventory_health.py --throttle 1
 
       - name: Upload scan results
         uses: actions/upload-artifact@v4
