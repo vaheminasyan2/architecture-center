@@ -104,6 +104,46 @@ Only scenarios with `criteria_passed = TRUE` participate in estimate comparison.
 
 The Excel output includes a **`needs-review`** worksheet that automatically collects scenarios requiring follow‑up—specifically those marked as `matched_existing_scenario_new_estimate` or `new_estimate_candidate`—and serves as a ready‑to‑action queue for PMMs and pricing/content owners.
 
+## Inventory health check
+
+After the estimate comparison runs, the workflow performs a dedicated health check on every scenario already in `estimate_scenarios.xlsx`. This is the maintenance queue for the Pricing Calculator — it tells you which scenarios need to be retired, updated, or investigated.
+
+### How it works
+
+The check runs in two stages for each inventory scenario:
+
+**Stage 1 — Reverse lookup (no network calls)**  
+Checks whether the scenario's `yml_url` appears anywhere in the current `scan-results.xlsx`. If it does not, the source file has been deleted or renamed in the repo and the scenario is immediately flagged as `scenario_removed` without making any HTTP request.
+
+**Stage 2 — HTTP liveness check (network)**  
+For scenarios whose file still exists in the repo, makes an HTTP GET request to the live `yml_url` on `learn.microsoft.com` and follows any redirects. This catches three situations the reverse lookup cannot: a page removed from publishing while its source file still exists in the repo, a page that redirects to a different URL, and a page that returns a 404.
+
+Requests are throttled at one per second by default to be polite to `learn.microsoft.com`. The throttle interval can be adjusted with the `--throttle` flag.
+
+### `inventory_status` values
+
+| Value | Stage detected | Meaning | Recommended action |
+|---|---|---|---|
+| `active` | Stage 2 | URL resolves correctly to the expected page | No action needed |
+| `scenario_removed` | Stage 1 or 2 | Source file deleted from repo, or URL returns 404 | Retire or redirect this Pricing Calculator scenario |
+| `scenario_redirected` | Stage 2 | URL permanently redirects to a different page | Review the redirect target; update or retire the calculator scenario |
+| `scan_error` | Stage 1 | File exists but failed scanner Gate 1 | Fix the source file structural issue first, then re-run |
+| `out_of_scope` | Stage 1 | File exists and parses but is currently out of scope | Investigate why the scenario dropped out of scope |
+
+### `inventory-health` worksheet
+
+The `inventory-health` tab in `scan-results.xlsx` contains one row per inventory scenario with the following columns:
+
+- **yml_url** — The canonical URL from `estimate_scenarios.xlsx`
+- **title** — Title from `estimate_scenarios.xlsx`
+- **estimate_link** — Estimate link from `estimate_scenarios.xlsx`
+- **inventory_status** — One of the five status values above
+- **redirect_target** — The final URL after following redirects (blank if no redirect)
+- **http_status_code** — HTTP response code from the liveness check (blank for `scenario_removed` via Stage 1)
+- **note** — Human-readable explanation of the status
+
+The `summary` tab is also updated with an **Inventory Health** section showing counts for each status and the total number of scenarios needing action (`scenario_removed` + `scenario_redirected`).
+
 ## Repository files and what they do
 
 - `architecture-center/scripts/scan_architecture_center_yml.py`  
@@ -118,8 +158,11 @@ The Excel output includes a **`needs-review`** worksheet that automatically coll
 - `architecture-center/scripts/run_compare_only.py`  
   Compares cost‑ready scenarios (`criteria_passed = TRUE`) against `estimate_scenarios.xlsx` and updates the `comparison_status` column, as well as additional review/summary tabs, in `scan-results.xlsx`.
 
+- `architecture-center/scripts/run_inventory_health.py`  
+  Performs a two-stage health check against every scenario in `estimate_scenarios.xlsx`: (1) a reverse lookup to detect scenarios whose source file has been deleted from the repo, and (2) an HTTP liveness check to detect scenarios whose URL has been removed from publishing or now redirects to a different page. Adds an `inventory-health` worksheet and a summary section to `scan-results.xlsx`.
+
 - `architecture-center/.github/workflows/scan_and_compare.yml`  
-  GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, and uploads the artifact.
+  GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, runs the inventory health check, and uploads the artifact.
 
 ## How to get started
 
@@ -135,6 +178,8 @@ Copy the scanner files into the forked Architecture Center repo, preserving the 
 
 - Open **GitHub Actions**
 - Select **Architecture Scan + Estimate Comparison** workflow and run it
+
+The workflow runs four steps in sequence: scan → build Excel → compare estimates → inventory health check.
 
 ## Outputs and how to interpret them
 
@@ -165,3 +210,4 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - Treat `scan_status = ok` + `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
+- Use the **`inventory-health`** tab to maintain scenarios already in the Pricing Calculator. `scenario_removed` and `scenario_redirected` rows are your action queue for retiring or updating calculator scenarios whose Architecture Center pages have changed.
