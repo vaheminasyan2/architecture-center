@@ -144,6 +144,55 @@ The `inventory-health` tab in `scan-results.xlsx` contains one row per inventory
 
 The `summary` tab is also updated with an **Inventory Health** section showing counts for each status and the total number of scenarios needing action (`scenario_removed` + `scenario_redirected`).
 
+## Image change detection
+
+After the inventory health check, the workflow checks whether the primary architecture diagram for each `Published` scenario in `estimate_scenarios.xlsx` has changed since the last run. This helps you keep Pricing Calculator scenarios in sync with the latest diagrams published in the Architecture Center.
+
+### How it works
+
+For each `Published` row in `estimate_scenarios.xlsx` that has a `primary_image_path` value, the script:
+
+1. Resolves the image file on disk (the Actions runner has a full repo clone, so no network calls are needed)
+2. Computes a SHA-256 hash of the file's raw bytes
+3. Compares that hash against the `primary_image_sha256` column in `estimate_scenarios.xlsx`
+4. Records the result in the `image-changes` tab of `scan-results.xlsx`
+5. Updates `primary_image_sha256` in `estimate_scenarios.xlsx` with the current hash, then commits the file back to the repo
+
+SHA-256 hashing detects any change to the image content — including cases where a contributor replaces an image file in-place without changing the filename.
+
+### `image_change_status` values
+
+| Value | Meaning | Action |
+|---|---|---|
+| `unchanged` | Hash matches the stored baseline | No action needed |
+| `changed` | Hash differs from baseline — image was updated in the repo | Review the updated diagram; update the Pricing Calculator image if needed |
+| `new_baseline` | No stored hash yet (first run or new inventory row) | Hash recorded as the new baseline; no comparison was made |
+| `image_not_found` | `primary_image_path` does not exist on disk | The file may have been moved, renamed, or deleted; verify and update the path in `estimate_scenarios.xlsx` |
+| `skipped` | Row has `status != Published` or blank `primary_image_path` | No action needed |
+
+### `image-changes` worksheet
+
+The `image-changes` tab contains only actionable rows (`changed` and `image_not_found`) with the following columns:
+
+- **yml_url** — Architecture Center article URL
+- **title_in_calculator** — Title as it appears in the Pricing Calculator
+- **primary_image_path** — Repo-relative path to the tracked image
+- **image_change_status** — `changed` or `image_not_found`
+- **stored_sha256** — The hash from the previous run (blank for `image_not_found`)
+- **current_sha256** — The hash computed this run (blank for `image_not_found`)
+- **note** — Human-readable explanation
+
+### Reference file columns
+
+`estimate_scenarios.xlsx` uses two image-related columns:
+
+- **primary_image_path** — Repo-relative path to the image used in the Pricing Calculator (e.g. `docs/example-scenario/ai/media/diagram.svg`). You fill this in manually.
+- **primary_image_sha256** — SHA-256 hash of the image file, auto-populated and updated by the workflow. Do not edit this column manually.
+
+### Baseline auto-update behaviour
+
+After each run, the workflow commits the updated `estimate_scenarios.xlsx` (with refreshed `primary_image_sha256` values) back to the repo using a `[skip ci]` commit message to avoid triggering another workflow run. This means each monthly run automatically compares against the previous month's image state.
+
 ## Repository files and what they do
 
 - `architecture-center/scripts/scan_architecture_center_yml.py`  
@@ -161,8 +210,11 @@ The `summary` tab is also updated with an **Inventory Health** section showing c
 - `architecture-center/scripts/run_inventory_health.py`  
   Performs a two-stage health check against every scenario in `estimate_scenarios.xlsx`: (1) a reverse lookup to detect scenarios whose source file has been deleted from the repo, and (2) an HTTP liveness check to detect scenarios whose URL has been removed from publishing or now redirects to a different page. Adds an `inventory-health` worksheet and a summary section to `scan-results.xlsx`.
 
+- `architecture-center/scripts/run_image_check.py`  
+  Detects image changes for `Published` scenarios in `estimate_scenarios.xlsx`. Hashes each `primary_image_path` file and compares it against the stored `primary_image_sha256` baseline. Updates the baseline in `estimate_scenarios.xlsx` after each run and adds an `image-changes` worksheet to `scan-results.xlsx`.
+
 - `architecture-center/.github/workflows/scan_and_compare.yml`  
-  GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, runs the inventory health check, and uploads the artifact.
+  GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, runs the inventory health check, runs image change detection, and uploads the artifact. After image hashing, the workflow commits the updated `estimate_scenarios.xlsx` back to the repo so the next run always compares against the latest baseline.
 
 ## How to get started
 
@@ -179,7 +231,7 @@ Copy the scanner files into the forked Architecture Center repo, preserving the 
 - Open **GitHub Actions**
 - Select **Architecture Scan + Estimate Comparison** workflow and run it
 
-The workflow runs four steps in sequence: scan → build Excel → compare estimates → inventory health check.
+The workflow runs six steps in sequence: scan → build Excel → compare estimates → inventory health check → image change detection → commit updated baselines.
 
 ## Outputs and how to interpret them
 
@@ -211,3 +263,4 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
 - Use the **`inventory-health`** tab to maintain scenarios already in the Pricing Calculator. `scenario_removed` and `scenario_redirected` rows are your action queue for retiring or updating calculator scenarios whose Architecture Center pages have changed.
+- Use the **`image-changes`** tab to track architecture diagram updates. `changed` rows mean the primary image was modified in the repo since your last run and may need to be updated in the Pricing Calculator. `image_not_found` rows mean the tracked image path is no longer valid and needs to be corrected in `estimate_scenarios.xlsx`.
