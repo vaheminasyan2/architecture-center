@@ -23,6 +23,7 @@ jobs:
           python -m py_compile scripts/build_scan_results_xlsx.py
           python -m py_compile scripts/run_compare_only.py
           python -m py_compile scripts/run_inventory_health.py
+          python -m py_compile scripts/run_image_check.py
 
       # 1) Run the real scanner -> JSON
       - name: Run scanner (YML-based)
@@ -41,6 +42,23 @@ jobs:
       #    --throttle controls the delay (seconds) between HTTP requests.
       - name: Run inventory health check
         run: python scripts/run_inventory_health.py --throttle 1
+
+      # 5) Image change detection — hashes primary_image_path for each
+      #    Published scenario and compares against stored baseline in
+      #    estimate_scenarios.xlsx. Updates the baseline after each run.
+      - name: Run image change detection
+        run: python scripts/run_image_check.py --repo-root .
+
+      # 6) Commit updated estimate_scenarios.xlsx (new hashes written by
+      #    run_image_check.py) back to the repo so the next run has a
+      #    fresh baseline. Skips the commit if nothing changed.
+      - name: Commit updated image hashes
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add estimate_scenarios.xlsx
+          git diff --cached --quiet || git commit -m "chore: update primary_image_sha256 baseline [skip ci]"
+          git push
 
       - name: Upload scan results
         uses: actions/upload-artifact@v4
