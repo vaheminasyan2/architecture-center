@@ -143,15 +143,22 @@ criteria_true = (
 scan_df['_scenario_key'] = scan_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 est_df['_scenario_key'] = est_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 
-# Build inventory map: Published rows only (mirrors run_inventory_health.py
-# and run_image_check.py scoping — Skip rows are excluded from comparison)
+# Build two lookup structures from the inventory:
+#   inv_map      — Published rows only; used for estimate link comparison
+#   excluded_urls — non-Published rows (e.g. Skip); these are known to the
+#                  inventory but intentionally excluded from the calculator.
+#                  A scanned article whose URL appears here should never be
+#                  surfaced as a new_estimate_candidate.
 PUBLISHED_STATUS = 'Published'
 inv_map = {}
+excluded_urls = set()
 for _, row in est_df.iterrows():
-    if str(row.get('status') or '').strip() != PUBLISHED_STATUS:
-        continue
     key = row.get('_scenario_key', '')
     if not key:
+        continue
+    row_status = str(row.get('status') or '').strip()
+    if row_status != PUBLISHED_STATUS:
+        excluded_urls.add(key)   # known but intentionally skipped
         continue
     inv_link = _normalize_estimate_url(row.get(ESTIMATE_LINK_COL, ''))
     if not inv_link:
@@ -159,12 +166,19 @@ for _, row in est_df.iterrows():
     inv_map[key] = inv_link
 
 matched_in_inventory = scan_df['_scenario_key'].isin(inv_map.keys())
+excluded_from_inventory = scan_df['_scenario_key'].isin(excluded_urls)
 
 # Within in-scope rows: apply criteria_passed -> comparison_status logic
 in_scope_no_criteria = in_scope & ~criteria_true
-in_scope_criteria_new = in_scope & criteria_true & ~matched_in_inventory
+# A scanned article is a new candidate only if it has an estimate link AND
+# is not already in the inventory (Published) AND is not explicitly excluded
+# (Skip or other non-Published status in estimate_scenarios.xlsx)
+in_scope_criteria_new = (
+    in_scope & criteria_true & ~matched_in_inventory & ~excluded_from_inventory
+)
 
 scan_df.loc[in_scope_no_criteria, STATUS_COL] = STATUS_NOT_APPLICABLE
+scan_df.loc[in_scope & criteria_true & excluded_from_inventory, STATUS_COL] = STATUS_NOT_APPLICABLE
 scan_df.loc[in_scope_criteria_new, STATUS_COL] = STATUS_NEW_CANDIDATE
 
 # Split matched existing scenario into SAME vs NEW estimate link (in-scope only)
