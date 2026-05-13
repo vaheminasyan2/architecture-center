@@ -54,7 +54,7 @@ def _normalize_estimate_url(url: str) -> str:
     netloc = parts.netloc.lower()
     path = parts.path.rstrip('/')
 
-    keep_keys = {'shared-estimate', 'service'}
+    keep_keys = {'shared-estimate'}
     q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=False) if k.lower() in keep_keys]
     q_sorted = sorted((k.lower(), (v or '').strip()) for k, v in q)
     query = urlencode(q_sorted, doseq=True)
@@ -122,7 +122,7 @@ if IN_SCOPE_COL not in scan_df.columns:
 # Rows with a scan_status error (Gate 1) are always excluded — they are structurally
 # broken files that never reached content evaluation.
 # Rows with in_scope = FALSE (Gate 2) are also excluded.
-# Only rows that pass both gates participate in comparison and needs-review.
+# Only rows that pass both gates participate in comparison and the action queue tabs.
 scan_ok = scan_df[SCAN_STATUS_COL].astype(str).str.strip().str.lower() == 'ok'
 
 in_scope = scan_ok & (
@@ -143,9 +143,13 @@ criteria_true = (
 scan_df['_scenario_key'] = scan_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 est_df['_scenario_key'] = est_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 
-# Build inventory map: one estimate link per scenario
+# Build inventory map: Published rows only (mirrors run_inventory_health.py
+# and run_image_check.py scoping — Skip rows are excluded from comparison)
+PUBLISHED_STATUS = 'Published'
 inv_map = {}
 for _, row in est_df.iterrows():
+    if str(row.get('status') or '').strip() != PUBLISHED_STATUS:
+        continue
     key = row.get('_scenario_key', '')
     if not key:
         continue
@@ -174,10 +178,22 @@ for idx, row in scan_df.loc[applicable].iterrows():
     else:
         scan_df.at[idx, STATUS_COL] = STATUS_NEW_ESTIMATE
 
-# needs-review: in-scope rows only that require follow-up action
-needs_review = scan_df[
-    in_scope & scan_df[STATUS_COL].isin([STATUS_NEW_ESTIMATE, STATUS_NEW_CANDIDATE])
+# Action queues — both restricted to in-scope rows only.
+# Kept separate because they map to different workflows:
+#   estimate-updates  → existing inventory scenarios whose estimate link changed
+#                       (submit update request to calculator team + update reference file)
+#   new-candidates    → net-new articles not yet in the inventory
+#                       (evaluate and add to calculator if appropriate)
+estimate_updates = scan_df[
+    in_scope & (scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE)
 ].copy()
+
+new_candidates = scan_df[
+    in_scope & (scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE)
+].copy()
+
+# Combined count for summary (total rows requiring any action)
+needs_action_count = len(estimate_updates) + len(new_candidates)
 
 # --- Summary ---
 total = len(scan_df)
@@ -209,8 +225,10 @@ summary = pd.DataFrame({
         'new_estimate_candidate',
         'not_applicable (in-scope, no usable estimate)',
         '',
-        # Review queue
-        'Rows in needs-review tab',
+        # Action queues
+        'Rows in estimate-updates tab (matched_existing_scenario_new_estimate)',
+        'Rows in new-candidates tab (new_estimate_candidate)',
+        'Total rows requiring action',
         '',
         # Run metadata
         'Scan date (UTC)',
@@ -233,7 +251,9 @@ summary = pd.DataFrame({
         int((scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE).sum()),
         int((in_scope & (scan_df[STATUS_COL] == STATUS_NOT_APPLICABLE)).sum()),
         '',
-        int(len(needs_review)),
+        int(len(estimate_updates)),
+        int(len(new_candidates)),
+        needs_action_count,
         '',
         datetime.utcnow().isoformat(),
         os.getenv('GITHUB_SHA', 'local'),
@@ -242,5 +262,6 @@ summary = pd.DataFrame({
 
 with pd.ExcelWriter(SCAN_RESULTS_PATH, engine='openpyxl', mode='w') as writer:
     scan_df.drop(columns=['_scenario_key']).to_excel(writer, sheet_name='scan-results', index=False)
-    needs_review.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='needs-review', index=False)
+    estimate_updates.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='estimate-updates', index=False)
+    new_candidates.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='new-candidates', index=False)
     summary.to_excel(writer, sheet_name='summary', index=False)
