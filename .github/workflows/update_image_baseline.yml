@@ -1,0 +1,51 @@
+name: Update Image Baseline
+
+# Run this workflow manually ONLY after you have confirmed that the Pricing
+# Calculator has been updated with the new image(s) flagged in the last
+# 'Architecture Scan + Estimate Comparison' run.
+#
+# What it does:
+#   1. Recomputes SHA-256 hashes for all Published scenarios in
+#      estimate_scenarios.xlsx using the current repo files.
+#   2. Writes the new hashes back to estimate_scenarios.xlsx.
+#   3. Commits and pushes the updated file to the repo so the next
+#      monthly detect run compares against this confirmed baseline.
+#
+# Do NOT run this workflow to dismiss a detected change without first
+# updating the Pricing Calculator — doing so will silently lose the signal.
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas openpyxl
+
+      - name: Compile script (fail fast on syntax errors)
+        run: python -m py_compile scripts/run_image_check.py
+
+      # Recompute and store hashes — no comparison performed
+      - name: Update image baseline
+        run: python scripts/run_image_check.py --update-baseline --repo-root .
+
+      # Commit updated hashes back to the repo
+      - name: Commit updated image baseline
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add estimate_scenarios.xlsx
+          git diff --cached --quiet && echo "No changes to commit." || \
+            git commit -m "chore: update primary_image_sha256 baseline [skip ci]"
+          git push

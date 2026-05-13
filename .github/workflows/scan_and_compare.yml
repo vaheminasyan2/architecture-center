@@ -43,22 +43,12 @@ jobs:
       - name: Run inventory health check
         run: python scripts/run_inventory_health.py --throttle 1
 
-      # 5) Image change detection — hashes primary_image_path for each
-      #    Published scenario and compares against stored baseline in
-      #    estimate_scenarios.xlsx. Updates the baseline after each run.
+      # 5) Image change detection — compares current image hashes against the
+      #    stored baseline in estimate_scenarios.xlsx. Flags changes but does
+      #    NOT update the baseline. Baseline is updated only via the separate
+      #    'Update Image Baseline' workflow after changes have been actioned.
       - name: Run image change detection
         run: python scripts/run_image_check.py --repo-root .
-
-      # 6) Commit updated estimate_scenarios.xlsx (new hashes written by
-      #    run_image_check.py) back to the repo so the next run has a
-      #    fresh baseline. Skips the commit if nothing changed.
-      - name: Commit updated image hashes
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add estimate_scenarios.xlsx
-          git diff --cached --quiet || git commit -m "chore: update primary_image_sha256 baseline [skip ci]"
-          git push
 
       - name: Upload scan results
         uses: actions/upload-artifact@v4
