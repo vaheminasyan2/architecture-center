@@ -1,6 +1,8 @@
 """run_inventory_health.py — Inventory health check for estimate_scenarios.xlsx.
 
-Performs two checks against every scenario in the reference inventory:
+Performs two checks against every Published scenario in the reference inventory.
+Rows with status != 'Published' are skipped, consistent with the image change
+detection behaviour in run_image_check.py.
 
   Check 1 — Reverse lookup (no network):
     Is the inventory scenario's yml_url present anywhere in the current
@@ -46,6 +48,8 @@ import pandas as pd
 SCAN_RESULTS_PATH = Path('scan-results.xlsx')
 ESTIMATE_SCENARIOS_PATH = Path('estimate_scenarios.xlsx')
 
+STATUS_COL = 'status'
+PUBLISHED_STATUS = 'Published'
 YML_URL_COL = 'yml_url'
 SCAN_STATUS_COL = 'scan_status'
 IN_SCOPE_COL = 'in_scope'
@@ -164,15 +168,24 @@ def main():
 
     # ── Process each inventory row ─────────────────────────────────────────
     health_rows = []
+    skipped_count = 0
     total = len(est_df)
 
-    print(f'Checking {total} inventory scenarios...')
+    print(f'Checking {total} inventory scenarios (Published only)...')
 
     for i, (_, inv_row) in enumerate(est_df.iterrows(), 1):
+        row_status = str(inv_row.get(STATUS_COL) or '').strip()
         yml_url = str(inv_row.get(YML_URL_COL) or '').strip()
         estimate_link = str(inv_row.get('estimate_link') or '').strip()
 
+        # Skip non-Published rows — consistent with run_image_check.py scoping
+        if row_status != PUBLISHED_STATUS:
+            skipped_count += 1
+            print(f'  [{i}/{total}] skipped   {yml_url}  (status = {row_status!r})')
+            continue
+
         if not yml_url:
+            skipped_count += 1
             continue
 
         norm_url = _normalize_url(yml_url)
@@ -287,9 +300,8 @@ def main():
             })
             print(f' → active ({status_code})')
 
-        # Throttle between requests
-        if i < total:
-            time.sleep(args.throttle)
+        # Throttle between HTTP requests
+        time.sleep(args.throttle)
 
     # ── Build health DataFrame ─────────────────────────────────────────────
     health_df = pd.DataFrame(health_rows, columns=[
@@ -304,6 +316,7 @@ def main():
     ]
 
     print(f'\nInventory health summary:')
+    print(f'  skipped (non-Published): {skipped_count}')
     for status, count in sorted(status_counts.items()):
         print(f'  {status}: {count}')
     print(f'  Scenarios needing action: {len(needs_action)}')
@@ -323,7 +336,8 @@ def main():
             '',
             '── Inventory Health ──────────────────────────',
             f'Check run date (UTC)',
-            f'Inventory scenarios checked',
+            f'Inventory scenarios checked (Published only)',
+            f'skipped (status != Published)',
             f'active (URL resolves correctly)',
             f'scenario_removed (file deleted or page unpublished)',
             f'scenario_redirected (URL redirects to different page)',
@@ -336,6 +350,7 @@ def main():
             '',
             datetime.utcnow().isoformat(),
             len(health_df),
+            skipped_count,
             int(status_counts.get(STATUS_ACTIVE, 0)),
             int(status_counts.get(STATUS_REMOVED, 0)),
             int(status_counts.get(STATUS_REDIRECTED, 0)),
