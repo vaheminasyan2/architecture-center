@@ -1,39 +1,42 @@
 """run_image_check.py — Detect image changes for scenarios in estimate_scenarios.xlsx.
 
-For every inventory scenario with status = 'Published' and a non-blank
-primary_image_path, this script:
+Operates in two modes controlled by the --update-baseline flag:
 
-  1. Resolves the image file on disk (the Actions runner has a full clone of
-     the repo, so the file is available locally without any network calls).
-  2. Computes a SHA-256 hash of the file's bytes.
-  3. Compares that hash against the stored value in the
-     'primary_image_sha256' column of estimate_scenarios.xlsx.
-  4. Writes image_change_status and a note to the 'image-changes' worksheet
-     in scan-results.xlsx.
-  5. Updates the 'primary_image_sha256' column in estimate_scenarios.xlsx
-     with the current hash so the next run always compares against the
-     latest known state.
+DETECT mode (default — used by the monthly scan workflow):
+  Compares the SHA-256 hash of each image file against the stored baseline in
+  estimate_scenarios.xlsx. Flags any image whose hash has changed since the
+  last baseline update. Does NOT update the stored hashes — the baseline stays
+  frozen until you explicitly trigger an update.
 
-image_change_status values:
+UPDATE BASELINE mode (--update-baseline — separate manual workflow):
+  Recomputes and stores SHA-256 hashes for all Published scenarios without
+  performing any comparison. Run this only after you have confirmed that the
+  Pricing Calculator has been updated with the new image. This commits the new
+  baseline so the next detect run compares against the freshly confirmed state.
+
+This separation ensures that a detected image change stays visible across
+monthly runs until you explicitly action it and update the baseline.
+
+image_change_status values (detect mode only):
   unchanged         — Hash matches the stored baseline; image has not changed.
   changed           — Hash differs from the stored baseline; image was updated.
-  new_baseline      — No stored hash yet (first run, or new row added to
-                      inventory). Hash computed and saved; no comparison made.
-  image_not_found   — primary_image_path does not exist on disk. The file may
-                      have been moved, renamed, or deleted in the repo.
+  new_baseline      — No stored hash exists yet (first run or new row). Hash
+                      recorded; no comparison made.
+  image_not_found   — primary_image_path does not exist on disk.
   skipped           — Row has status != 'Published' or blank primary_image_path.
 
 The 'image-changes' tab contains only 'changed' and 'image_not_found' rows —
 the action queue for updating the Pricing Calculator.
 
-The summary tab in scan-results.xlsx gains an Image Changes section with
-counts for each status.
-
-Usage (from repo root, after the scan and compare steps):
+Usage:
+  # Monthly detect run (called by scan_and_compare.yml):
   python scripts/run_image_check.py [--repo-root PATH]
 
-  --repo-root   Root of the cloned repo (default: current working directory).
-                The script resolves primary_image_path values relative to this.
+  # Manual baseline update (called by update_image_baseline.yml):
+  python scripts/run_image_check.py --update-baseline [--repo-root PATH]
+
+  --repo-root        Root of the cloned repo (default: current working directory).
+  --update-baseline  Run in baseline-update mode instead of detect mode.
 """
 
 import argparse
@@ -83,14 +86,24 @@ def main():
         '--repo-root', default='.',
         help='Root of the cloned repo (default: current working directory)',
     )
+    ap.add_argument(
+        '--update-baseline', action='store_true',
+        help='Update stored hashes without comparing (run after actioning changes)',
+    )
     args = ap.parse_args()
     repo_root = Path(args.repo_root).resolve()
+    update_baseline_mode = args.update_baseline
 
     # ── Load data ──────────────────────────────────────────────────────────
-    if not SCAN_RESULTS_PATH.exists():
+    if not update_baseline_mode and not SCAN_RESULTS_PATH.exists():
         sys.exit(f'ERROR: {SCAN_RESULTS_PATH} not found. Run scan and compare steps first.')
     if not ESTIMATE_SCENARIOS_PATH.exists():
         sys.exit(f'ERROR: {ESTIMATE_SCENARIOS_PATH} not found.')
+
+    if update_baseline_mode:
+        print('Mode: UPDATE BASELINE — hashes will be recomputed and stored. No comparison performed.')
+    else:
+        print('Mode: DETECT — comparing current hashes against stored baseline.')
 
     est_df = pd.read_excel(ESTIMATE_SCENARIOS_PATH, dtype=str).fillna('')
 
@@ -147,21 +160,29 @@ def main():
         # ── Hash the current file ──────────────────────────────────────────
         current_sha = sha256_file(image_file)
 
-        # ── First run — no stored hash yet ────────────────────────────────
+        # ── UPDATE BASELINE mode — store hash, skip comparison ────────────
+        if update_baseline_mode:
+            est_df.at[idx, IMAGE_SHA_COL] = current_sha
+            new_baseline_count += 1
+            print(f'  UPDATED    {image_path_str}  ({current_sha[:12]}...)')
+            continue
+
+        # ── DETECT mode — compare against stored baseline ─────────────────
         if not stored_sha:
+            # No baseline yet — record hash but don't flag as changed
             new_baseline_count += 1
             est_df.at[idx, IMAGE_SHA_COL] = current_sha
             print(f'  BASELINE   {image_path_str}  ({current_sha[:12]}...)')
             continue  # new_baseline rows don't appear in the image-changes tab
 
-        # ── Compare hashes ────────────────────────────────────────────────
         if current_sha == stored_sha:
             unchanged_count += 1
-            est_df.at[idx, IMAGE_SHA_COL] = current_sha  # refresh (no-op)
+            # Do NOT update stored hash — baseline stays frozen until explicit update
             print(f'  unchanged  {image_path_str}')
         else:
             changed_count += 1
-            est_df.at[idx, IMAGE_SHA_COL] = current_sha  # update to latest
+            # Do NOT update stored hash — keep the old value so the change
+            # remains visible on every detect run until baseline is updated
             image_rows.append({
                 'yml_url': yml_url,
                 'title_in_calculator': title,
@@ -170,9 +191,9 @@ def main():
                 'stored_sha256': stored_sha,
                 'current_sha256': current_sha,
                 'note': (
-                    'Image file hash has changed since the last run. '
-                    'The architecture diagram may have been updated in the repo. '
-                    'Review the image and update the Pricing Calculator if needed.'
+                    'Image file hash has changed since the last baseline update. '
+                    'Review the image and update the Pricing Calculator. '
+                    'Then run the Update Image Baseline workflow to reset the baseline.'
                 ),
             })
             print(f'  CHANGED    {image_path_str}')
@@ -194,18 +215,31 @@ def main():
     print(f'  skipped:          {skipped_count}')
     print(f'  Action needed:    {changed_count + not_found_count}')
 
-    # ── Update estimate_scenarios.xlsx with current hashes ─────────────────
-    # Preserve column order; insert IMAGE_SHA_COL after IMAGE_PATH_COL if new
-    cols = list(est_df.columns)
-    if IMAGE_SHA_COL not in cols:
-        insert_at = cols.index(IMAGE_PATH_COL) + 1
-        cols.insert(insert_at, IMAGE_SHA_COL)
-        est_df = est_df[cols]
+    # ── Write estimate_scenarios.xlsx only when hashes changed ──────────────
+    # In detect mode: only write if new_baseline rows were recorded (first run
+    # or new inventory row). Changed images intentionally keep the old hash so
+    # the change stays visible until the baseline is explicitly updated.
+    # In update-baseline mode: always write.
+    should_write_est = update_baseline_mode or new_baseline_count > 0
+    if should_write_est:
+        cols = list(est_df.columns)
+        if IMAGE_SHA_COL not in cols:
+            insert_at = cols.index(IMAGE_PATH_COL) + 1
+            cols.insert(insert_at, IMAGE_SHA_COL)
+            est_df = est_df[cols]
+        est_df.to_excel(ESTIMATE_SCENARIOS_PATH, index=False)
+        if update_baseline_mode:
+            print(f'\nBaseline updated: wrote {new_baseline_count} hash(es) to {ESTIMATE_SCENARIOS_PATH}.')
+        else:
+            print(f'\nRecorded {new_baseline_count} new baseline hash(es) to {ESTIMATE_SCENARIOS_PATH}.')
+    else:
+        print(f'\nDetect mode: {ESTIMATE_SCENARIOS_PATH} not modified (baseline preserved).')
 
-    est_df.to_excel(ESTIMATE_SCENARIOS_PATH, index=False)
-    print(f'\nUpdated {ESTIMATE_SCENARIOS_PATH} with current image hashes.')
+    # ── Update scan-results.xlsx (detect mode only) ──────────────────────────
+    if update_baseline_mode:
+        print('Baseline update complete. scan-results.xlsx not modified.')
+        return
 
-    # ── Update scan-results.xlsx ───────────────────────────────────────────
     # Read all existing sheets so we preserve scan-results, needs-review, etc.
     existing_sheets = {}
     with pd.ExcelFile(SCAN_RESULTS_PATH, engine='openpyxl') as xf:
