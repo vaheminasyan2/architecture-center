@@ -1,6 +1,12 @@
 # MS Architecture Center Scanner
 
-A lightweight scanning tool used to analyze articles in the **[Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/browse)** to determine scenarios that include a **usable Azure Pricing Calculator estimate link** and compare them against a reference list of known scenarios. The outputs help identify pricing‑ready scenarios, detect updated estimate links (estimate drift), and highlight gaps.
+A maintenance and discovery tool for keeping **[Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/browse)** scenarios in sync with the **Azure Pricing Calculator**.
+
+It serves two purposes:
+
+1. **Maintenance of the 32 published calculator scenarios** — monitors each known scenario for estimate link changes, image updates, and whether the article is still live and accessible on the Architecture Center. Flags anything that requires a update request to the calculator team.
+
+2. **Discovery of new calculator candidates** — scans all Architecture Center articles to identify those that have added or updated a saved estimate link and are not yet in the calculator, so they can be evaluated for addition.
 
 ## What the scanner evaluates
 
@@ -49,7 +55,7 @@ Before any pass/fail evaluation runs, the scanner applies a scope filter. A scen
 3. **At least one Azure category** — `azureCategories` must have at least one entry
 4. **At least one architecture image** — at least one image reference (`:::image`, `![]()`, `<img>`, etc.) must appear anywhere in the article body, in any format and whether local or externally hosted
 
-Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` that lists each failing criterion (semicolon-separated). **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the `needs-review` tab.
+Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` that lists each failing criterion (semicolon-separated). **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the action queue tabs.
 
 ### Gate 3 — Primary question (pass / fail)
 
@@ -85,24 +91,28 @@ This comparison answers the question: **Is this scenario already associated with
 ### Comparison behavior
 
 - Scenarios are matched using the **Learn URL** (`yml_url`).
-- Estimate URLs are **normalized** before comparison (case, whitespace, trailing slashes removed; only identity‑defining query parameters such as `shared-estimate` and `service` are retained).
+- Estimate URLs are **normalized** before comparison (case, whitespace, and trailing slashes removed; only the identity‑defining `shared-estimate` query parameter is retained).
 - If an article contains **multiple valid estimate links** (for example, Small / Medium / Large cost profiles), **all compliant links are preserved** in the report (newline‑separated).
 - A scenario is treated as a match if **any scanned estimate link** matches the inventory estimate link after normalization.
 
 ### `comparison_status` values
 
-| comparison_status value | Meaning |
-|-------------------------|--------|
-| `matched_existing_scenario_same_estimate` | Scenario exists in inventory and at least one scanned estimate link matches the inventory estimate link |
-| `matched_existing_scenario_new_estimate` | Scenario exists in inventory, but none of the scanned estimate links match (estimate drift or new estimate) |
-| `new_estimate_candidate` | Scenario passed (`criteria_passed = TRUE`) but does not exist in the inventory |
-| `not_applicable` | Scenario failed (`criteria_passed = FALSE`); comparison is not performed |
+| comparison_status value | Meaning | Action queue |
+|---|---|---|
+| `matched_existing_scenario_same_estimate` | Scenario exists in inventory and the scanned estimate link matches | No action needed |
+| `matched_existing_scenario_new_estimate` | Scenario exists in inventory but the estimate link has changed | **`estimate-updates`** tab |
+| `new_estimate_candidate` | Scenario has a valid estimate link but does not exist in the inventory | **`new-candidates`** tab |
+| `not_applicable` | Scenario failed Gate 2 or Gate 3; comparison not performed | — |
 
-Only scenarios with `criteria_passed = TRUE` participate in estimate comparison.
+Only scenarios with `in_scope = TRUE` and `criteria_passed = TRUE` participate in estimate comparison.
 
-### needs‑review worksheet
+### Action queue worksheets
 
-The Excel output includes a **`needs-review`** worksheet that automatically collects scenarios requiring follow‑up—specifically those marked as `matched_existing_scenario_new_estimate` or `new_estimate_candidate`—and serves as a ready‑to‑action queue for PMMs and pricing/content owners.
+The Excel output includes two dedicated action queue worksheets that separate the two distinct follow-up workflows:
+
+**`estimate-updates`** — scenarios already in the Pricing Calculator (`matched_existing_scenario_new_estimate`) whose estimate link has changed in the Architecture Center. Each row requires submitting an update request to the calculator team and updating `estimate_scenarios.xlsx`.
+
+**`new-candidates`** — articles not yet in the Pricing Calculator (`new_estimate_candidate`) that now have a valid saved estimate link. Each row is a candidate for evaluation and potential addition to the calculator.
 
 ## Inventory health check
 
@@ -220,7 +230,7 @@ The image hash baseline is **not** updated automatically during the monthly scan
   Performs a two-stage health check against every scenario in `estimate_scenarios.xlsx`: (1) a reverse lookup to detect scenarios whose source file has been deleted from the repo, and (2) an HTTP liveness check to detect scenarios whose URL has been removed from publishing or now redirects to a different page. Adds an `inventory-health` worksheet and a summary section to `scan-results.xlsx`.
 
 - `architecture-center/scripts/run_image_check.py`  
-  Detects image changes for `Published` scenarios in `estimate_scenarios.xlsx`. Hashes each `primary_image_path` file and compares it against the stored `primary_image_sha256` baseline. Updates the baseline in `estimate_scenarios.xlsx` after each run and adds an `image-changes` worksheet to `scan-results.xlsx`.
+  Operates in two modes. **Detect mode** (default, monthly scan): hashes each `primary_image_path` for `Published` scenarios and compares against the stored `primary_image_sha256` baseline — flags changes but does not update the baseline, so detected changes stay visible until actioned. **Update-baseline mode** (`--update-baseline`, separate manual workflow): recomputes and stores all hashes after changes have been confirmed and actioned in the Pricing Calculator. Adds an `image-changes` worksheet to `scan-results.xlsx`.
 
 - `architecture-center/.github/workflows/scan_and_compare.yml`  
   GitHub Actions workflow that runs the monthly scan: scan → build Excel → compare estimates → inventory health check → image change detection (detect mode). Does **not** update the image hash baseline.
@@ -263,7 +273,7 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - **out_of_scope_reason** — Why the scenario is out of scope: semicolon-separated failing criteria, or `scan_error` for Gate 1 failures
 - **criteria_passed** — Pricing readiness indicator (`in_scope = TRUE` rows only)
 - **failure_reason** — Why the scenario failed (if applicable)
-- **comparison_status** — Estimate comparison result
+- **comparison_status** — Estimate comparison result (see table above; drives the `estimate-updates` and `new-candidates` action queue tabs)
 - **yml_path** — Path to the scenario YAML file
 - **include_md_path** — Path to the included Markdown article
 - **md_author_name / md_ms_author_name** — Ownership context.
@@ -273,6 +283,7 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - Treat `scan_status != ok` rows as **structural file issues** — the YML or MD file has a problem that needs fixing before the scenario can be evaluated at all.
 - Treat `scan_status = ok` + `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
-- For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
-- Use the **`inventory-health`** tab to maintain scenarios already in the Pricing Calculator. `scenario_removed` and `scenario_redirected` rows are your action queue for retiring or updating calculator scenarios whose Architecture Center pages have changed.
-- Use the **`image-changes`** tab to track architecture diagram updates. `changed` rows mean the primary image was modified in the repo since the last confirmed baseline and may need to be updated in the Pricing Calculator. After actioning a change, trigger the **Update Image Baseline** workflow to reset the baseline. `image_not_found` rows mean the tracked image path is no longer valid and needs to be corrected in `estimate_scenarios.xlsx`.
+- Use the **`estimate-updates`** tab to action estimate link changes on scenarios already in the Pricing Calculator. Each row requires submitting an update request to the calculator team and then updating `estimate_scenarios.xlsx` with the new estimate link.
+- Use the **`new-candidates`** tab to discover Architecture Center articles that now have a valid saved estimate link and are not yet in the calculator. Evaluate each row and add to the calculator if appropriate.
+- Use the **`inventory-health`** tab for availability monitoring of the 32 published calculator scenarios. `scenario_removed` and `scenario_redirected` rows mean the Architecture Center page has been taken down or moved — submit a retirement or redirect update to the calculator team.
+- Use the **`image-changes`** tab to track architecture diagram updates for the 32 published scenarios. `changed` rows mean the primary diagram was updated in the repo since the last confirmed baseline. After submitting the image update to the calculator team, trigger the **Update Image Baseline** workflow to reset the baseline. `image_not_found` rows mean the tracked image path in `estimate_scenarios.xlsx` is no longer valid and needs to be corrected.
