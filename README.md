@@ -189,9 +189,18 @@ The `image-changes` tab contains only actionable rows (`changed` and `image_not_
 - **primary_image_path** — Repo-relative path to the image used in the Pricing Calculator (e.g. `docs/example-scenario/ai/media/diagram.svg`). You fill this in manually.
 - **primary_image_sha256** — SHA-256 hash of the image file, auto-populated and updated by the workflow. Do not edit this column manually.
 
-### Baseline auto-update behaviour
+### Baseline update behaviour
 
-After each run, the workflow commits the updated `estimate_scenarios.xlsx` (with refreshed `primary_image_sha256` values) back to the repo using a `[skip ci]` commit message to avoid triggering another workflow run. This means each monthly run automatically compares against the previous month's image state.
+The image hash baseline is **not** updated automatically during the monthly scan. This is intentional — a detected change must stay visible across every run until you have confirmed the update and actioned it. The workflow for updating the baseline is:
+
+1. Monthly scan runs → `image-changes` tab flags a scenario with `changed`
+2. You submit the image update request to the calculator team
+3. Calculator team updates the scenario with the new image
+4. You manually trigger the **Update Image Baseline** workflow from GitHub Actions
+5. The workflow recomputes all hashes, saves them to `estimate_scenarios.xlsx`, and commits the file back to the repo
+6. The next monthly scan compares against this newly confirmed baseline
+
+**Important:** do not run the Update Image Baseline workflow to dismiss a detected change without first updating the Pricing Calculator. Doing so will silently lose the signal and the change will not be detected again unless the image changes further.
 
 ## Repository files and what they do
 
@@ -214,7 +223,10 @@ After each run, the workflow commits the updated `estimate_scenarios.xlsx` (with
   Detects image changes for `Published` scenarios in `estimate_scenarios.xlsx`. Hashes each `primary_image_path` file and compares it against the stored `primary_image_sha256` baseline. Updates the baseline in `estimate_scenarios.xlsx` after each run and adds an `image-changes` worksheet to `scan-results.xlsx`.
 
 - `architecture-center/.github/workflows/scan_and_compare.yml`  
-  GitHub Actions workflow that runs the scan, builds the Excel report, performs estimate comparison, runs the inventory health check, runs image change detection, and uploads the artifact. After image hashing, the workflow commits the updated `estimate_scenarios.xlsx` back to the repo so the next run always compares against the latest baseline.
+  GitHub Actions workflow that runs the monthly scan: scan → build Excel → compare estimates → inventory health check → image change detection (detect mode). Does **not** update the image hash baseline.
+
+- `architecture-center/.github/workflows/update_image_baseline.yml`  
+  Separate manually triggered workflow that recomputes and stores SHA-256 hashes for all Published scenarios. Run this only after you have confirmed the Pricing Calculator has been updated with the new image. Commits the refreshed `estimate_scenarios.xlsx` back to the repo.
 
 ## How to get started
 
@@ -231,7 +243,7 @@ Copy the scanner files into the forked Architecture Center repo, preserving the 
 - Open **GitHub Actions**
 - Select **Architecture Scan + Estimate Comparison** workflow and run it
 
-The workflow runs six steps in sequence: scan → build Excel → compare estimates → inventory health check → image change detection → commit updated baselines.
+The monthly workflow runs five steps in sequence: scan → build Excel → compare estimates → inventory health check → image change detection (detect only, baseline not modified). A separate **Update Image Baseline** workflow handles baseline commits and is triggered manually after changes have been actioned.
 
 ## Outputs and how to interpret them
 
@@ -263,4 +275,4 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - For any `criteria_passed = TRUE`, use `comparison_status` to determine whether the scenario is **net new** or an **existing scenario with an updated estimate link.** In both cases, this indicates a need to update the Pricing Calculator — either by adding a new estimate scenario or updating an existing one.
 - Use the **`inventory-health`** tab to maintain scenarios already in the Pricing Calculator. `scenario_removed` and `scenario_redirected` rows are your action queue for retiring or updating calculator scenarios whose Architecture Center pages have changed.
-- Use the **`image-changes`** tab to track architecture diagram updates. `changed` rows mean the primary image was modified in the repo since your last run and may need to be updated in the Pricing Calculator. `image_not_found` rows mean the tracked image path is no longer valid and needs to be corrected in `estimate_scenarios.xlsx`.
+- Use the **`image-changes`** tab to track architecture diagram updates. `changed` rows mean the primary image was modified in the repo since the last confirmed baseline and may need to be updated in the Pricing Calculator. After actioning a change, trigger the **Update Image Baseline** workflow to reset the baseline. `image_not_found` rows mean the tracked image path is no longer valid and needs to be corrected in `estimate_scenarios.xlsx`.
