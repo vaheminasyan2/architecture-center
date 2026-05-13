@@ -238,6 +238,7 @@ summary = pd.DataFrame({
         'matched_existing_scenario_new_estimate',
         'new_estimate_candidate',
         'not_applicable (in-scope, no usable estimate)',
+        'excluded from comparison (Skip or non-Published in inventory)',
         '',
         # Action queues
         'Rows in estimate-updates tab (matched_existing_scenario_new_estimate)',
@@ -264,6 +265,7 @@ summary = pd.DataFrame({
         int((scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE).sum()),
         int((scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE).sum()),
         int((in_scope & (scan_df[STATUS_COL] == STATUS_NOT_APPLICABLE)).sum()),
+        int((in_scope & excluded_from_inventory).sum()),
         '',
         int(len(estimate_updates)),
         int(len(new_candidates)),
