@@ -32,8 +32,9 @@ Design:
     Gate 2  in_scope      Is this a complete, valid scenario? Requires ALL of:
                             1. Non-blank title
                             2. Non-blank description
-                            3. At least one azureCategory
-                            4. At least one image reference in the article
+                            3. At least one image reference in the article
+                          azureCategories is captured for informational purposes
+                          but does not affect in_scope.
                           On failure → out_of_scope_reason lists each failing criterion
                           (semicolon-separated), criteria_passed=FALSE. Gate 3 skipped.
     Gate 3  criteria_passed  Does the article contain a usable pricing estimate link?
@@ -315,11 +316,13 @@ def evaluate_scope(base: dict) -> None:
     """Gate 2 — apply in-scope filter after md content is fully populated.
 
     Only called on records where scan_status == 'ok' (Gate 1 passed).
-    A scenario is in_scope = TRUE only when ALL four criteria are met:
+    A scenario is in_scope = TRUE only when ALL three criteria are met:
       1. title           — non-blank
       2. description     — non-blank
-      3. azureCategories — at least one non-blank entry
-      4. image_paths     — at least one image reference found in the article
+      3. image_paths     — at least one image reference found in the article
+
+    azureCategories is captured in the output for informational purposes but
+    a missing or blank category does NOT affect in_scope.
 
     Sets base['in_scope'] and base['out_of_scope_reason'] in-place.
     Multiple failing criteria are combined in out_of_scope_reason (semicolon-separated).
@@ -329,9 +332,6 @@ def evaluate_scope(base: dict) -> None:
         reasons.append('blank_title')
     if not str(base.get('description') or '').strip():
         reasons.append('blank_description')
-    cats = base.get('azureCategories') or []
-    if not any(str(c).strip() for c in cats):
-        reasons.append('blank_category')
     if not base.get('image_paths'):
         reasons.append('no_architecture_image')
 
