@@ -29,7 +29,7 @@ The scanner applies three gates in strict sequence. Each gate only runs if the p
 | Gate | Column | Question | Stops here if… |
 |---|---|---|---|
 | **1** | `scan_status` | Did the file parse and resolve correctly? | File is broken or missing — `scan_status` = error code |
-| **2** | `in_scope` | Is this a complete, valid scenario? | Any of the four scope criteria are missing — `in_scope = FALSE` |
+| **2** | `in_scope` | Is this a complete, valid scenario? | Any of the three scope criteria are missing — `in_scope = FALSE` |
 | **3** | `criteria_passed` | Does the article contain a usable pricing estimate link? | No valid estimate link found — `criteria_passed = FALSE` |
 
 Comparison (`comparison_status`) only runs on rows that reach and pass Gate 3.
@@ -48,14 +48,15 @@ Before any content evaluation, the scanner checks whether each file could actual
 
 ### Gate 2 — Scope filter (in / out of scope)
 
-Before any pass/fail evaluation runs, the scanner applies a scope filter. A scenario is **in scope (`in_scope = TRUE`)** only when **all four** of the following are present:
+Before any pass/fail evaluation runs, the scanner applies a scope filter. A scenario is **in scope (`in_scope = TRUE`)** only when **all three** of the following are present:
 
 1. **Non-blank title** — pulled from the YML metadata or MD front matter
 2. **Non-blank description** — same source
-3. **At least one Azure category** — `azureCategories` must have at least one entry
-4. **At least one architecture image** — at least one image reference (`:::image`, `![]()`, `<img>`, etc.) must appear anywhere in the article body, in any format and whether local or externally hosted
+3. **At least one architecture image** — at least one image reference (`:::image`, `![]()`, `<img>`, etc.) must appear anywhere in the article body, in any format and whether local or externally hosted
 
-Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` that lists each failing criterion (semicolon-separated). **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the action queue tabs.
+`azureCategories` is captured in the output for every scenario but a missing or blank category does **not** cause a scenario to be marked out of scope.
+
+Scenarios that fail one or more criteria receive `in_scope = FALSE` and an `out_of_scope_reason` listing each failing criterion (semicolon-separated): `blank_title`, `blank_description`, or `no_architecture_image`. **All rows are preserved in the output** — out-of-scope rows are visible in `scan-results` for auditability but are excluded from pass/fail evaluation, comparison, and the action queue tabs.
 
 ### Gate 3 — Primary question (pass / fail)
 
