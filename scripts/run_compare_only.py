@@ -19,6 +19,7 @@ STATUS_SAME = 'matched_existing_scenario_same_estimate'
 STATUS_NEW_ESTIMATE = 'matched_existing_scenario_new_estimate'
 STATUS_NEW_CANDIDATE = 'new_estimate_candidate'
 STATUS_NOT_APPLICABLE = 'not_applicable'
+STATUS_LINK_REMOVED = 'estimate_link_removed'
 
 # --- URL normalization helpers ---
 
@@ -192,12 +193,20 @@ for idx, row in scan_df.loc[applicable].iterrows():
     else:
         scan_df.at[idx, STATUS_COL] = STATUS_NEW_ESTIMATE
 
-# Action queues — both restricted to in-scope rows only.
+# Reverse check — detect estimate link removal.
+# For every Published inventory scenario that IS found in the scan (i.e. the
+# article still exists and is in scope) but has criteria_passed = FALSE, the
+# estimate link has been removed from the article. This is distinct from
+# scenario_removed (page gone) and matched_existing_scenario_new_estimate
+# (link changed). Flag it so the calculator team can retire the scenario.
+for idx, row in scan_df.loc[in_scope & matched_in_inventory & ~criteria_true].iterrows():
+    scan_df.at[idx, STATUS_COL] = STATUS_LINK_REMOVED
+
+# Action queues — all restricted to in-scope rows only.
 # Kept separate because they map to different workflows:
-#   estimate-updates  → existing inventory scenarios whose estimate link changed
-#                       (submit update request to calculator team + update reference file)
-#   new-candidates    → net-new articles not yet in the inventory
-#                       (evaluate and add to calculator if appropriate)
+#   estimate-updates      → existing inventory scenarios whose estimate link changed
+#   new-candidates        → net-new articles not yet in the inventory
+#   estimate-link-removed → existing inventory scenarios whose estimate link was removed
 estimate_updates = scan_df[
     in_scope & (scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE)
 ].copy()
@@ -206,8 +215,12 @@ new_candidates = scan_df[
     in_scope & (scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE)
 ].copy()
 
+link_removed = scan_df[
+    in_scope & (scan_df[STATUS_COL] == STATUS_LINK_REMOVED)
+].copy()
+
 # Combined count for summary (total rows requiring any action)
-needs_action_count = len(estimate_updates) + len(new_candidates)
+needs_action_count = len(estimate_updates) + len(new_candidates) + len(link_removed)
 
 # --- Summary ---
 total = len(scan_df)
@@ -227,7 +240,7 @@ summary = pd.DataFrame({
         '',
         # Gate 2 — in_scope (of scan_ok rows)
         'Gate 2 PASS: in_scope = TRUE',
-        'Gate 2 FAIL: in_scope = FALSE (missing title / description / category / image)',
+        'Gate 2 FAIL: in_scope = FALSE (missing title / description / image)',
         '',
         # Gate 3 — criteria_passed (of in_scope rows)
         'Gate 3 PASS: criteria_passed = TRUE (has usable estimate link)',
@@ -236,12 +249,14 @@ summary = pd.DataFrame({
         # Comparison status (in-scope + criteria_passed = TRUE rows only)
         'matched_existing_scenario_same_estimate',
         'matched_existing_scenario_new_estimate',
+        'estimate_link_removed (link removed from article)',
         'new_estimate_candidate',
         'not_applicable (in-scope, no usable estimate)',
         'excluded from comparison (Skip or non-Published in inventory)',
         '',
         # Action queues
         'Rows in estimate-updates tab (matched_existing_scenario_new_estimate)',
+        'Rows in estimate-link-removed tab (estimate_link_removed)',
         'Rows in new-candidates tab (new_estimate_candidate)',
         'Total rows requiring action',
         '',
@@ -263,11 +278,13 @@ summary = pd.DataFrame({
         '',
         int((scan_df[STATUS_COL] == STATUS_SAME).sum()),
         int((scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE).sum()),
+        int((scan_df[STATUS_COL] == STATUS_LINK_REMOVED).sum()),
         int((scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE).sum()),
         int((in_scope & (scan_df[STATUS_COL] == STATUS_NOT_APPLICABLE)).sum()),
         int((in_scope & excluded_from_inventory).sum()),
         '',
         int(len(estimate_updates)),
+        int(len(link_removed)),
         int(len(new_candidates)),
         needs_action_count,
         '',
@@ -279,5 +296,6 @@ summary = pd.DataFrame({
 with pd.ExcelWriter(SCAN_RESULTS_PATH, engine='openpyxl', mode='w') as writer:
     scan_df.drop(columns=['_scenario_key']).to_excel(writer, sheet_name='scan-results', index=False)
     estimate_updates.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='estimate-updates', index=False)
+    link_removed.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='estimate-link-removed', index=False)
     new_candidates.drop(columns=['_scenario_key'], errors='ignore').to_excel(writer, sheet_name='new-candidates', index=False)
     summary.to_excel(writer, sheet_name='summary', index=False)
