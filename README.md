@@ -101,7 +101,8 @@ This comparison answers the question: **Is this scenario already associated with
 | comparison_status value | Meaning | Action queue |
 |---|---|---|
 | `matched_existing_scenario_same_estimate` | Scenario exists in inventory and the scanned estimate link matches | No action needed |
-| `matched_existing_scenario_new_estimate` | Scenario exists in inventory but the estimate link has changed | **`estimate-updates`** tab |
+| `matched_existing_scenario_new_estimate` | Scenario exists in inventory but the estimate link has changed to a different URL | **`estimate-updates`** tab |
+| `estimate_link_removed` | Scenario exists in inventory, article is still live and in scope, but the estimate link has been removed from the article entirely | **`estimate-link-removed`** tab |
 | `new_estimate_candidate` | Scenario has a valid estimate link but does not exist in the inventory | **`new-candidates`** tab |
 | `not_applicable` | Scenario failed Gate 2 or Gate 3; comparison not performed | — |
 
@@ -111,7 +112,9 @@ Only scenarios with `in_scope = TRUE` and `criteria_passed = TRUE` participate i
 
 The Excel output includes two dedicated action queue worksheets that separate the two distinct follow-up workflows:
 
-**`estimate-updates`** — scenarios already in the Pricing Calculator (`matched_existing_scenario_new_estimate`) whose estimate link has changed in the Architecture Center. Each row requires submitting an update request to the calculator team and updating `estimate_scenarios.xlsx`.
+**`estimate-updates`** — scenarios already in the Pricing Calculator (`matched_existing_scenario_new_estimate`) whose estimate link has changed to a different URL. Each row requires submitting an update request to the calculator team and updating `estimate_scenarios.xlsx`.
+
+**`estimate-link-removed`** — scenarios already in the Pricing Calculator (`estimate_link_removed`) whose estimate link has been removed from the Architecture Center article entirely while the page is still live. Each row requires submitting a retirement request to the calculator team and updating `estimate_scenarios.xlsx`.
 
 **`new-candidates`** — articles not yet in the Pricing Calculator (`new_estimate_candidate`) that now have a valid saved estimate link. Each row is a candidate for evaluation and potential addition to the calculator.
 
@@ -285,6 +288,7 @@ After a successful run, download `scan-results.xlsx` from the workflow artifacts
 - Treat `scan_status = ok` + `in_scope = FALSE` rows as **out-of-scope scenarios** that need content work (missing title, description, category, or architecture image) before they can be considered for pricing readiness.
 - Treat `in_scope = TRUE` + `criteria_passed = FALSE` as **pricing gaps**, where a usable estimate link needs to be added to the Architecture Center article.
 - Use the **`estimate-updates`** tab to action estimate link changes on scenarios already in the Pricing Calculator. Each row requires submitting an update request to the calculator team and then updating `estimate_scenarios.xlsx` with the new estimate link.
+- Use the **`estimate-link-removed`** tab to action estimate link removals. Each row means the Architecture Center article is still live but its estimate link has been removed — submit a retirement request to the calculator team and update `estimate_scenarios.xlsx` accordingly.
 - Use the **`new-candidates`** tab to discover Architecture Center articles that now have a valid saved estimate link and are not yet in the calculator. Evaluate each row and add to the calculator if appropriate.
 - Use the **`inventory-health`** tab for availability monitoring of the 32 published calculator scenarios. `scenario_removed` and `scenario_redirected` rows mean the Architecture Center page has been taken down or moved — submit a retirement or redirect update to the calculator team.
 - Use the **`image-changes`** tab to track architecture diagram updates for the 32 published scenarios. `changed` rows mean the primary diagram was updated in the repo since the last confirmed baseline. After submitting the image update to the calculator team, trigger the **Update Image Baseline** workflow to reset the baseline. `image_not_found` rows mean the tracked image path in `estimate_scenarios.xlsx` is no longer valid and needs to be corrected.
