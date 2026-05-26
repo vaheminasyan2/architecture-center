@@ -100,7 +100,7 @@ def main():
         links = collect_estimate_links(it)
         rows.append({
             # ── Descriptive metadata ──────────────────────────────────────
-            'title': it.get('title') or '',
+            'title_in_ac': it.get('title') or '',
             'description': it.get('description') or '',
             'azureCategories': '; '.join(it.get('azureCategories') or [])
             if isinstance(it.get('azureCategories'), list)

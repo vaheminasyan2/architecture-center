@@ -147,7 +147,7 @@ est_df['_scenario_key'] = est_df[YML_URL_COL].astype(str).map(_normalize_learn_u
 # Build title lookup maps for enriching action queue tabs
 # title_in_ac        — article title from the Architecture Center (scanner output)
 # title_in_calculator — title as it appears in the Pricing Calculator (from estimate_scenarios.xlsx)
-ac_title_map = dict(zip(scan_df['_scenario_key'], scan_df.get('title', pd.Series(dtype=str)).fillna('')))
+ac_title_map = dict(zip(scan_df['_scenario_key'], scan_df.get('title_in_ac', pd.Series(dtype=str)).fillna('')))
 calc_title_map = {}
 for _, row in est_df.iterrows():
     key = row.get('_scenario_key', '')

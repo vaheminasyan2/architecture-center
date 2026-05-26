@@ -166,7 +166,7 @@ def main():
             'scan_status': str(row.get(SCAN_STATUS_COL) or 'ok').strip().lower(),
             'in_scope': str(row.get(IN_SCOPE_COL) or 'false').strip().lower()
                         in ('true', '1', 'yes') or row.get(IN_SCOPE_COL) is True,
-            'title_in_ac': str(row.get('title') or '').strip(),
+            'title_in_ac': str(row.get('title_in_ac') or '').strip(),
         }
 
     # ── Process each inventory row ─────────────────────────────────────────

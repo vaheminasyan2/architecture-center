@@ -115,7 +115,7 @@ def main():
             scan_df = pd.read_excel(SCAN_RESULTS_PATH)
             for _, row in scan_df.iterrows():
                 url = str(row.get('yml_url') or '').strip().rstrip('/')
-                t = str(row.get('title') or '').strip()
+                t = str(row.get('title_in_ac') or '').strip()
                 if url:
                     ac_title_map[url] = t
         except Exception:
