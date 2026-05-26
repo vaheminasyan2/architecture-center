@@ -22,6 +22,8 @@ Output:
   Adds an 'inventory-health' worksheet to scan-results.xlsx containing one
   row per inventory scenario with the following columns:
     yml_url               — The canonical URL from estimate_scenarios.xlsx
+    title_in_ac           — Article title from the Architecture Center (scanner output)
+    title_in_calculator   — Title as it appears in the Pricing Calculator (from estimate_scenarios.xlsx)
     estimate_link         — Estimate link from estimate_scenarios.xlsx
     inventory_status      — active | scenario_removed | scenario_redirected |
                             scan_error | out_of_scope
@@ -164,6 +166,7 @@ def main():
             'scan_status': str(row.get(SCAN_STATUS_COL) or 'ok').strip().lower(),
             'in_scope': str(row.get(IN_SCOPE_COL) or 'false').strip().lower()
                         in ('true', '1', 'yes') or row.get(IN_SCOPE_COL) is True,
+            'title_in_ac': str(row.get('title') or '').strip(),
         }
 
     # ── Process each inventory row ─────────────────────────────────────────
@@ -177,6 +180,7 @@ def main():
         row_status = str(inv_row.get(STATUS_COL) or '').strip()
         yml_url = str(inv_row.get(YML_URL_COL) or '').strip()
         estimate_link = str(inv_row.get('estimate_link') or '').strip()
+        title_in_calculator = str(inv_row.get('title_in_calculator') or '').strip()
 
         # Skip non-Published rows — consistent with run_image_check.py scoping
         if row_status != PUBLISHED_STATUS:
@@ -196,6 +200,8 @@ def main():
             # Not in scan results at all — file deleted from repo
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': '',
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_REMOVED,
                 'redirect_target': '',
@@ -211,11 +217,14 @@ def main():
         # File exists in scan results — classify by scan_status / in_scope
         scan_status = scan_hit['scan_status']
         in_scope = scan_hit['in_scope']
+        title_in_ac = scan_hit.get('title_in_ac', '')
 
         if scan_status != 'ok':
             # Gate 1 failure — file exists but is structurally broken
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_SCAN_ERROR,
                 'redirect_target': '',
@@ -232,6 +241,8 @@ def main():
             # Gate 2 failure — file exists and parses but is out of scope
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_OUT_OF_SCOPE,
                 'redirect_target': '',
@@ -253,6 +264,8 @@ def main():
             # Network error — treat conservatively, flag for review
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_ACTIVE,   # don't flag on transient errors
                 'redirect_target': '',
@@ -264,6 +277,8 @@ def main():
         elif status_code == 404:
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_REMOVED,
                 'redirect_target': final_url,
@@ -278,6 +293,8 @@ def main():
         elif redirected:
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_REDIRECTED,
                 'redirect_target': final_url,
@@ -292,6 +309,8 @@ def main():
         else:
             health_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
+                'title_in_calculator': title_in_calculator,
                 'estimate_link': estimate_link,
                 'inventory_status': STATUS_ACTIVE,
                 'redirect_target': '',
@@ -305,7 +324,7 @@ def main():
 
     # ── Build health DataFrame ─────────────────────────────────────────────
     health_df = pd.DataFrame(health_rows, columns=[
-        'yml_url', 'estimate_link',
+        'yml_url', 'title_in_ac', 'title_in_calculator', 'estimate_link',
         'inventory_status', 'redirect_target', 'http_status_code', 'note',
     ])
 

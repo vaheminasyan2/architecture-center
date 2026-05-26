@@ -107,6 +107,20 @@ def main():
 
     est_df = pd.read_excel(ESTIMATE_SCENARIOS_PATH, dtype=str).fillna('')
 
+    # Build title_in_ac lookup from scan-results.xlsx if available
+    # (run after the scan step so scan-results.xlsx exists)
+    ac_title_map = {}
+    if SCAN_RESULTS_PATH.exists():
+        try:
+            scan_df = pd.read_excel(SCAN_RESULTS_PATH)
+            for _, row in scan_df.iterrows():
+                url = str(row.get('yml_url') or '').strip().rstrip('/')
+                t = str(row.get('title') or '').strip()
+                if url:
+                    ac_title_map[url] = t
+        except Exception:
+            pass  # non-fatal — title_in_ac will be blank if lookup fails
+
     required = {STATUS_COL, YML_URL_COL, IMAGE_PATH_COL}
     missing = required - set(est_df.columns)
     if missing:
@@ -127,6 +141,7 @@ def main():
     for idx, row in est_df.iterrows():
         status = str(row.get(STATUS_COL) or '').strip()
         yml_url = str(row.get(YML_URL_COL) or '').strip()
+        title_in_ac = ac_title_map.get(yml_url.rstrip('/'), '')
         title = str(row.get(TITLE_COL) or '').strip() if TITLE_COL in est_df.columns else ''
         image_path_str = str(row.get(IMAGE_PATH_COL) or '').strip()
         stored_sha = str(row.get(IMAGE_SHA_COL) or '').strip()
@@ -144,6 +159,7 @@ def main():
             not_found_count += 1
             image_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
                 'title_in_calculator': title,
                 'primary_image_path': image_path_str,
                 'image_change_status': IMG_NOT_FOUND,
@@ -185,6 +201,7 @@ def main():
             # remains visible on every detect run until baseline is updated
             image_rows.append({
                 'yml_url': yml_url,
+                'title_in_ac': title_in_ac,
                 'title_in_calculator': title,
                 'primary_image_path': image_path_str,
                 'image_change_status': IMG_CHANGED,
@@ -203,7 +220,7 @@ def main():
     # ── Build image-changes DataFrame ─────────────────────────────────────
     # Tab shows only actionable rows: changed + not_found
     changes_df = pd.DataFrame(image_rows, columns=[
-        'yml_url', 'title_in_calculator', 'primary_image_path',
+        'yml_url', 'title_in_ac', 'title_in_calculator', 'primary_image_path',
         'image_change_status', 'stored_sha256', 'current_sha256', 'note',
     ])
 

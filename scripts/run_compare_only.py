@@ -144,6 +144,16 @@ criteria_true = (
 scan_df['_scenario_key'] = scan_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 est_df['_scenario_key'] = est_df[YML_URL_COL].astype(str).map(_normalize_learn_url)
 
+# Build title lookup maps for enriching action queue tabs
+# title_in_ac        — article title from the Architecture Center (scanner output)
+# title_in_calculator — title as it appears in the Pricing Calculator (from estimate_scenarios.xlsx)
+ac_title_map = dict(zip(scan_df['_scenario_key'], scan_df.get('title', pd.Series(dtype=str)).fillna('')))
+calc_title_map = {}
+for _, row in est_df.iterrows():
+    key = row.get('_scenario_key', '')
+    if key:
+        calc_title_map[key] = str(row.get('title_in_calculator') or '').strip()
+
 # Build two lookup structures from the inventory:
 #   inv_map      — Published rows only; used for estimate link comparison
 #   excluded_urls — non-Published rows (e.g. Skip); these are known to the
@@ -210,14 +220,21 @@ for idx, row in scan_df.loc[in_scope & matched_in_inventory & ~criteria_true].it
 estimate_updates = scan_df[
     in_scope & (scan_df[STATUS_COL] == STATUS_NEW_ESTIMATE)
 ].copy()
+estimate_updates.insert(0, 'title_in_calculator',
+    estimate_updates['_scenario_key'].map(calc_title_map).fillna(''))
+estimate_updates.rename(columns={'title': 'title_in_ac'}, inplace=True, errors='ignore')
 
 new_candidates = scan_df[
     in_scope & (scan_df[STATUS_COL] == STATUS_NEW_CANDIDATE)
 ].copy()
+new_candidates.rename(columns={'title': 'title_in_ac'}, inplace=True, errors='ignore')
 
 link_removed = scan_df[
     in_scope & (scan_df[STATUS_COL] == STATUS_LINK_REMOVED)
 ].copy()
+link_removed.insert(0, 'title_in_calculator',
+    link_removed['_scenario_key'].map(calc_title_map).fillna(''))
+link_removed.rename(columns={'title': 'title_in_ac'}, inplace=True, errors='ignore')
 
 # Combined count for summary (total rows requiring any action)
 needs_action_count = len(estimate_updates) + len(new_candidates) + len(link_removed)
