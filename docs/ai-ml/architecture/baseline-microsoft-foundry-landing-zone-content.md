@@ -50,7 +50,7 @@ The following resources remain mostly unchanged from the [baseline architecture]
 
   This article assumes that generative AI models in this scenario are workload owned and hosted resources. If they're not, the model host or an [AI gateway](/azure/api-management/genai-gateway-capabilities) becomes a workload dependency. The platform team must maintain reliable network connectivity from your virtual network to their virtual network or a private endpoint must be established.
 
-- **[Agent Service](/azure/foundry/agents/overview)** is a cloud-native runtime environment that enables intelligent agents to operate securely and autonomously. In this architecture, Agent Service provides the orchestration layer for chat interactions. It hosts and manages the chat agent that processes user requests. This architecture supports both prompt-based and containerized (hosted) agents.
+- **[Agent Service](/azure/foundry/agents/overview)** is a cloud-native runtime environment that enables intelligent agents to operate securely and autonomously. In this architecture, Agent Service provides the orchestration layer for chat interactions. It hosts and manages the [prompt agent](/azure/foundry/agents/overview#agent-types) that processes user requests, consistent with the baseline architecture. The landing zone networking and governance design in this article applies whether you deploy a prompt agent or a containerized hosted agent.
 
   Use the [standard agent setup](/azure/foundry/agents/concepts/standard-agent-setup) in this architecture. Connect your agent to a dedicated subnet in your spoke virtual network, and route egress traffic through your connectivity subscription.
 
@@ -480,9 +480,12 @@ It's expected that you'll be required to use the native integration of Microsoft
 
 Cost Optimization focuses on ways to reduce unnecessary expenses and improve operational efficiencies. For more information, see [Design review checklist for Cost Optimization](/azure/well-architected/cost-optimization/checklist).
 
-All [cost optimization strategies in the baseline architecture](./baseline-microsoft-foundry-chat.yml#cost-optimization) apply to the workload resources in this architecture.
+All [cost optimization strategies in the baseline architecture](./baseline-microsoft-foundry-chat.yml#cost-optimization) apply to the workload resources in this architecture. Use this [preconfigured estimate in the Azure pricing calculator](https://azure.com/e/ab9da2693b5046ed8dece535af402741) to understand the cost of the workload resources. Adjust the values to match your usage patterns and regional pricing.
 
 This architecture greatly benefits from Azure landing zone [platform resources](#platform-team-owned-resources). For example, resources such as Azure Firewall and DDoS Protection transition from workload to platform resources. Even if you use those resources through a chargeback model, the added security and cross-premises connectivity are more cost-effective than self-managing those resources. Take advantage of other centralized offerings from your platform team to extend those benefits to your workload without compromising its service-level objective, recovery time objective, or recovery point objective.
+
+> [!NOTE]
+> The preconfigured pricing estimate doesn't include shared platform infrastructure such as Azure Firewall, Azure Bastion, DDoS Protection, or hub networking resources. The platform team manages those resources in the platform subscriptions, and costs are shared across workloads.
 
 > [!IMPORTANT]
 > Don't try to optimize costs by consolidating Foundry dependencies as platform resources. These services must remain workload resources.
