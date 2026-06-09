@@ -75,15 +75,25 @@ USER_AGENT = (
 # ── URL helpers ────────────────────────────────────────────────────────────
 
 def _normalize_url(url: str) -> str:
-    """Normalize a Learn URL for stable matching (lowercase, strip trailing slash)."""
+    """Normalize a Learn URL for stable matching.
+
+    - Lowercases scheme and host
+    - Strips trailing slashes
+    - Strips a trailing /index segment — files named index.yml/index.md publish
+      without the /index suffix on learn.microsoft.com, so both forms are
+      equivalent and should not be treated as a redirect.
+    """
     if not url:
         return ''
     u = str(url).strip()
     parts = urlsplit(u)
+    path = parts.path.rstrip('/')
+    if path.lower().endswith('/index'):
+        path = path[:-len('/index')]
     return urlunsplit((
         parts.scheme.lower(),
         parts.netloc.lower(),
-        parts.path.rstrip('/'),
+        path,
         '',
         '',
     ))

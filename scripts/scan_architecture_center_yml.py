@@ -146,6 +146,11 @@ def make_learn_url_from_docs_path(repo_rel_path: str) -> str:
         if p.lower().endswith(ext):
             p = p[:-len(ext)]
             break
+    # Files named index.yml / index.md are the default document for their
+    # directory. The docs publishing platform drops the /index segment when
+    # serving, so we strip it here to produce the canonical URL.
+    if p.lower().endswith('/index'):
+        p = p[:-len('/index')]
     return f"https://learn.microsoft.com/en-us/azure/architecture/{p}"
 
 
