@@ -4,7 +4,7 @@ A maintenance and discovery tool for keeping **[Azure Architecture Center](https
 
 It serves two purposes:
 
-1. **Maintenance of the 32 published calculator scenarios** — monitors each known scenario for estimate link changes, image updates, and whether the article is still live and accessible on the Architecture Center. Flags anything that requires a update request to the calculator team.
+1. **Maintenance of published calculator scenarios** — monitors each known scenario for estimate link changes, image updates, and whether the article is still live and accessible on the Architecture Center. Flags anything that requires a update request to the calculator team.
 
 2. **Discovery of new calculator candidates** — scans all Architecture Center articles to identify those that have added or updated a saved estimate link and are not yet in the calculator, so they can be evaluated for addition.
 
