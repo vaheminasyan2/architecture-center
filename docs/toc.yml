@@ -205,7 +205,7 @@ items:
     - name: Background jobs
       href: best-practices/background-jobs.md
     - name: Caching
-      href: best-practices/caching.yml
+      href: best-practices/caching.md
     - name: Content Delivery Network
       displayName: CDN, edge, static content
       href: best-practices/cdn.yml
@@ -478,9 +478,9 @@ items:
     href: patterns/quarantine.yml
   - name: Queue-Based Load Leveling
     displayName: Backpressure, buffering, load smoothing
-    href: patterns/queue-based-load-leveling.yml
+    href: patterns/queue-based-load-leveling.md
   - name: Rate Limiting
-    href: patterns/rate-limiting-pattern.yml
+    href: patterns/rate-limiting-pattern.md
   - name: Retry
     href: patterns/retry.yml
   - name: Saga
@@ -727,7 +727,7 @@ items:
           items:
           - name: High availability for multitier AKS apps
             displayName: Azure Kubernetes Service, HA
-            href: guide/aks/aks-high-availability.yml
+            href: guide/aks/aks-high-availability.md
           - name: CI/CD for AKS apps via Azure Pipelines
             displayName: Azure Kubernetes Service, continuous integration continuous delivery
             href: guide/aks/aks-cicd-azure-pipelines.md
@@ -1033,9 +1033,6 @@ items:
         href: networking/guide/cross-tenant-secure-access-private-endpoints.md
     - name: Architectures
       items:
-      - name: AD DS resource forests in Azure
-        displayName: Active Directory Domain Services
-        href: reference-architectures/identity/adds-forest.yml
       - name: Microsoft Entra identity management for AWS
         href: reference-architectures/aws/aws-azure-ad-security.yml
       - name: Deploy AD DS in an Azure virtual network
@@ -1084,6 +1081,18 @@ items:
     items:
     - name: Guides
       items:
+      - name: Connect on-premises SAP systems to Azure
+        displayName: Internet of Things
+        href: guide/iot/howto-connect-on-premises-sap-to-azure.md
+      - name: Enable an industrial dataspace on Azure
+        displayName: Internet of Things
+        href: guide/iot/howto-iot-industrial-dataspaces.md
+      - name: Connect Databricks to an Azure IoT solution 
+        displayName: Internet of Things
+        href: guide/iot/how-to-connect-databricks-to-solution.md 
+      - name: Connect Microsoft Fabric to an Azure IoT solution
+        displayName: Internet of Things
+        href: guide/iot/how-to-connect-fabric-to-solution.md  
       - name: Enable ML inference on IoT Edge
         displayName: Internet of Things
         href: guide/iot/machine-learning-inference-iot-edge.yml
@@ -1096,12 +1105,11 @@ items:
       - name: Multitenant IoT Hub-based solutions
         displayName: Internet of Things
         href: guide/multitenant/approaches/iot.md
-    - name: Architectures
-      items:
-      - name: Automotive test data analytics
-        href: industries/automotive/automotive-telemetry-analytics.yml
     - name: Solution ideas
       items:
+      - name: Azure industrial IoT reference solution architecture
+        displayName: Internet of Things
+        href: solution-ideas/articles/iot-industrial-solution-architecture.yml
       - name: Azure Load Testing for IoT Hub
         displayName: Internet of Things
         href: guide/testing/load-testing/load-testing-with-custom-plugins.md
@@ -1132,60 +1140,6 @@ items:
           href: hybrid/arc-hybrid-kubernetes.yml
         - name: Hybrid availability and monitoring
           href: hybrid/hybrid-perf-monitoring.yml
-  - name: Migration
-    items:
-    - name: Get started
-      href: guide/migration/migration-start-here.md
-    - name: Guides
-      items:
-      - name: BizTalk Server to Azure Integration Services
-        items:
-        - name: Migration overview
-          href: /azure/logic-apps/biztalk-server-to-azure-integration-services-overview
-          maintainContext: true
-        - name: Which integration services to choose?
-          href: /azure/logic-apps/azure-integration-services-choose-capabilities
-          maintainContext: true
-        - name: Migration options and best practices
-          href: /azure/logic-apps/biztalk-server-azure-integration-services-migration-approaches
-          maintainContext: true
-      - name: Migration deployments
-        items:
-        - name: Migrate with Azure VMware Solution
-          href: /azure/cloud-adoption-framework/scenarios/azure-vmware/migrate
-          maintainContext: true
-      - name: Migration planning
-        items:
-        - name: Build a migration plan
-          href: /azure/migrate/concepts-migration-planning
-          maintainContext: true
-        - name: Support for VMware migration
-          href: /azure/migrate/migrate-support-matrix-vmware-migration
-          maintainContext: true
-        - name: Support for Hyper-V migration
-          href: /azure/migrate/migrate-support-matrix-hyper-v-migration
-          maintainContext: true
-        - name: Support for physical server migration
-          href: /azure/migrate/migrate-support-matrix-physical-migration
-          maintainContext: true
-      - name: Security baseline for Azure Migrate
-        href: /security/benchmark/azure/baselines/migrate-security-baseline
-        maintainContext: true
-      - name: Hyper-V migration
-        href: /azure/migrate/hyper-v-migration-architecture
-        maintainContext: true
-      - name: VMware agentless migration
-        items:
-        - name: Agentless migration of VMware VMs
-          displayName: virtual machines
-          href: /azure/migrate/concepts-vmware-agentless-migration
-          maintainContext: true
-        - name: Prepare for VMware agentless migration
-          href: /azure/migrate/prepare-for-agentless-migration
-          maintainContext: true
-      - name: VMware agent-based migration
-        href: /azure/migrate/agent-based-migration-architecture
-        maintainContext: true
   - name: Networking
     href: networking/index.md
   - name: Security

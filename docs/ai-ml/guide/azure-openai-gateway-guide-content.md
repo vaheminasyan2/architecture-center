@@ -76,11 +76,11 @@ To address the many challenges listed in [Key challenges](#key-challenges), you 
 
 - Potential to implement [federated authentication](../../patterns/federated-identity.yml).
 
-- Ability to control pressure on models through [rate limiting](../../patterns/rate-limiting-pattern.yml).
+- Ability to control pressure on models through [rate limiting](../../patterns/rate-limiting-pattern.md).
 
 - Cross-cutting and cross-model monitoring.
 
-- Ability to introduce [gateway aggregation](../../patterns/gateway-aggregation.md) and advanced [routing](../../patterns/gateway-routing.yml) to multiple services, like routing low priority messages to a queue for [queue-based load leveling](../../patterns/queue-based-load-leveling.yml) or to compute resources to handle tasks.
+- Ability to introduce [gateway aggregation](../../patterns/gateway-aggregation.md) and advanced [routing](../../patterns/gateway-routing.yml) to multiple services, like routing low priority messages to a queue for [queue-based load leveling](../../patterns/queue-based-load-leveling.md) or to compute resources to handle tasks.
 
 - Load balancing that uses [health endpoint monitoring](../../patterns/health-endpoint-monitoring.yml) to route only to healthy endpoints by [circuit breaking](../../patterns/circuit-breaker.md) on unavailable or overloaded model deployments.
 

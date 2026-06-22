@@ -1,6 +1,16 @@
 {
   "redirections": [
     {
+      "source_path": "docs/industries/automotive/automotive-telemetry-analytics.yml",
+      "redirect_url": "/industry/mobility/architecture/ra-mobility-overview",
+      "redirect_document_id": false
+    },
+    {
+      "source_path": "docs/guide/migration/migration-start-here.md",
+      "redirect_url": "/azure/migration/migrate-to-azure",
+      "redirect_document_id": false
+    },
+    {
       "source_path": "docs/databases/guide/data-scrambling-for-sap-using-delphix-and-azure-data-factory.yml",
       "redirect_url": "https://marketplace.microsoft.com/product/saas/delphix.delphix-compliance-services-for-azure-tb-model",
       "redirect_document_id": false
@@ -6093,6 +6103,11 @@
       "redirect_document_id": false
     },
     {
+      "source_path": "docs/networking/guide/sdwan-integration-in-hub-and-spoke-network-topologies.md",
+      "redirect_url": "/azure/architecture/networking/guide/sd-wan-integration-hub-spoke-network-topologies",
+      "redirect_document_id": true
+    },
+    {      
       "source_path": "docs/guide/iot/azure-iot-migration-best-practices.md",
       "redirect_url": "/azure/iot/iot-introduction",
       "redirect_document_id": false
@@ -7260,6 +7275,11 @@
     {
       "source_path": "docs/reference-architectures/identity/adfs.yml",
       "redirect_url": "/entra/identity/hybrid/connect/migrate-from-federation-to-cloud-authentication",
+      "redirect_document_id": false
+    },
+    {
+      "source_path": "docs/reference-architectures/identity/adds-forest.yml",
+      "redirect_url": "/entra/identity/domain-services/overview",
       "redirect_document_id": false
     },
     {
