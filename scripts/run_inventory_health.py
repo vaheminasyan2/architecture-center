@@ -1,8 +1,8 @@
 """run_inventory_health.py — Inventory health check for estimate_scenarios.xlsx.
 
-Performs two checks against every Published scenario in the reference inventory.
-Rows with status != 'Published' are skipped, consistent with the image change
-detection behaviour in run_image_check.py.
+Performs two checks against every scenario in the reference inventory except
+those explicitly marked with status = 'Skip'. All other statuses are processed,
+consistent with run_image_check.py and run_compare_only.py.
 
   Check 1 — Reverse lookup (no network):
     Is the inventory scenario's yml_url present anywhere in the current
@@ -51,7 +51,7 @@ SCAN_RESULTS_PATH = Path('scan-results.xlsx')
 ESTIMATE_SCENARIOS_PATH = Path('estimate_scenarios.xlsx')
 
 STATUS_COL = 'status'
-PUBLISHED_STATUS = 'Published'
+SKIP_STATUS = 'Skip'
 YML_URL_COL = 'yml_url'
 SCAN_STATUS_COL = 'scan_status'
 IN_SCOPE_COL = 'in_scope'
@@ -184,7 +184,7 @@ def main():
     skipped_count = 0
     total = len(est_df)
 
-    print(f'Checking {total} inventory scenarios (Published only)...')
+    print(f'Checking {total} inventory scenarios (all except Skip)...')
 
     for i, (_, inv_row) in enumerate(est_df.iterrows(), 1):
         row_status = str(inv_row.get(STATUS_COL) or '').strip()
@@ -192,10 +192,10 @@ def main():
         estimate_link = str(inv_row.get('estimate_link') or '').strip()
         title_in_calculator = str(inv_row.get('title_in_calculator') or '').strip()
 
-        # Skip non-Published rows — consistent with run_image_check.py scoping
-        if row_status != PUBLISHED_STATUS:
+        # Skip rows explicitly marked Skip — all other statuses are processed
+        if row_status == SKIP_STATUS:
             skipped_count += 1
-            print(f'  [{i}/{total}] skipped   {yml_url}  (status = {row_status!r})')
+            print(f'  [{i}/{total}] skipped   {yml_url}  (status=Skip)')
             continue
 
         if not yml_url:
@@ -345,7 +345,7 @@ def main():
     ]
 
     print(f'\nInventory health summary:')
-    print(f'  skipped (non-Published): {skipped_count}')
+    print(f'  skipped (status=Skip): {skipped_count}')
     for status, count in sorted(status_counts.items()):
         print(f'  {status}: {count}')
     print(f'  Scenarios needing action: {len(needs_action)}')
@@ -365,8 +365,8 @@ def main():
             '',
             '── Inventory Health ──────────────────────────',
             f'Check run date (UTC)',
-            f'Inventory scenarios checked (Published only)',
-            f'skipped (status != Published)',
+            f'Inventory scenarios checked (all except Skip)',
+            f'skipped (status = Skip)',
             f'active (URL resolves correctly)',
             f'scenario_removed (file deleted or page unpublished)',
             f'scenario_redirected (URL redirects to different page)',

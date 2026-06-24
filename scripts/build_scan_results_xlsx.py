@@ -2,6 +2,7 @@
 """Build scan-results.xlsx from scan-results.json.
 - Adds ms.date column (from scanner's ms_date field)
 - Keeps image_download_urls column
+- Adds primary_image_path (first image reference found in the article)
 - Enforces estimate_link to ONLY be one of:
   A) https://azure.com/e/*
   B) pricing/calculator?...shared-estimate=*
@@ -108,6 +109,11 @@ def main():
             'ms.date': it.get('ms_date') or '',
             'yml_url': it.get('yml_url') or '',
             'image_download_urls': join_list(it.get('image_download_urls') or []),
+            # First image reference found in the article — useful for populating
+            # primary_image_path in estimate_scenarios.xlsx when processing new candidates
+            'primary_image_path': (
+                (it.get('image_paths') or [None])[0] or ''
+            ),
             # ── Pricing estimate ──────────────────────────────────────────
             'estimate_link': "\n".join(links),
             # ── Evaluation pipeline (Gate 1 → 2 → 3) ─────────────────────

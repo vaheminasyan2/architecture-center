@@ -9,7 +9,7 @@ DETECT mode (default — used by the monthly scan workflow):
   frozen until you explicitly trigger an update.
 
 UPDATE BASELINE mode (--update-baseline — separate manual workflow):
-  Recomputes and stores SHA-256 hashes for all Published scenarios without
+  Recomputes and stores SHA-256 hashes for all non-Skip scenarios without
   performing any comparison. Run this only after you have confirmed that the
   Pricing Calculator has been updated with the new image. This commits the new
   baseline so the next detect run compares against the freshly confirmed state.
@@ -23,7 +23,7 @@ image_change_status values (detect mode only):
   new_baseline      — No stored hash exists yet (first run or new row). Hash
                       recorded; no comparison made.
   image_not_found   — primary_image_path does not exist on disk.
-  skipped           — Row has status != 'Published' or blank primary_image_path.
+  skipped           — Row has status = 'Skip' or blank primary_image_path.
 
 The 'image-changes' tab contains only 'changed' and 'image_not_found' rows —
 the action queue for updating the Pricing Calculator.
@@ -57,7 +57,7 @@ YML_URL_COL = 'yml_url'
 TITLE_COL = 'title_in_calculator'
 IMAGE_PATH_COL = 'primary_image_path'
 IMAGE_SHA_COL = 'primary_image_sha256'
-PUBLISHED_STATUS = 'Published'
+SKIP_STATUS = 'Skip'
 
 # image_change_status values
 IMG_UNCHANGED = 'unchanged'
@@ -147,7 +147,7 @@ def main():
         stored_sha = str(row.get(IMAGE_SHA_COL) or '').strip()
 
         # Skip non-Published rows or rows without an image path
-        if status != PUBLISHED_STATUS or not image_path_str:
+        if status == SKIP_STATUS or not image_path_str:
             est_df.at[idx, IMAGE_SHA_COL] = stored_sha  # preserve existing
             skipped_count += 1
             continue
@@ -270,12 +270,12 @@ def main():
             '',
             '── Image Changes ─────────────────────────────',
             'Check run date (UTC)',
-            'Published scenarios checked',
+            'Scenarios checked (all except Skip)',
             'unchanged (image hash matches baseline)',
             'changed (image updated in repo)',
             'new_baseline (first run — hash recorded, no comparison)',
             'image_not_found (file missing from repo)',
-            'skipped (status != Published or no image path)',
+            'skipped (status = Skip or no image path)',
             'Scenarios needing action (changed + not found)',
         ],
         'Value': [

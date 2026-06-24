@@ -167,7 +167,7 @@ for _, row in est_df.iterrows():
 #                  inventory but intentionally excluded from the calculator.
 #                  A scanned article whose URL appears here should never be
 #                  surfaced as a new_estimate_candidate.
-PUBLISHED_STATUS = 'Published'
+SKIP_STATUS = 'Skip'
 inv_map = {}
 excluded_urls = set()
 for _, row in est_df.iterrows():
@@ -175,8 +175,8 @@ for _, row in est_df.iterrows():
     if not key:
         continue
     row_status = str(row.get('status') or '').strip()
-    if row_status != PUBLISHED_STATUS:
-        excluded_urls.add(key)   # known but intentionally skipped
+    if row_status == SKIP_STATUS:
+        excluded_urls.add(key)   # explicitly excluded — do not surface in any action queue
         continue
     inv_link = _normalize_estimate_url(row.get(ESTIMATE_LINK_COL, ''))
     if not inv_link:
@@ -276,7 +276,7 @@ summary = pd.DataFrame({
         'estimate_link_removed (link removed from article)',
         'new_estimate_candidate',
         'not_applicable (in-scope, no usable estimate)',
-        'excluded from comparison (Skip or non-Published in inventory)',
+        'excluded from comparison (status = Skip)',
         '',
         # Action queues
         'Rows in estimate-updates tab (matched_existing_scenario_new_estimate)',
