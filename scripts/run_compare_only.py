@@ -24,7 +24,12 @@ STATUS_LINK_REMOVED = 'estimate_link_removed'
 # --- URL normalization helpers ---
 
 def _normalize_learn_url(url: str) -> str:
-    """Normalize Learn URLs for stable scenario matching."""
+    """Normalize Learn URLs for stable scenario matching.
+
+    Strips trailing slashes and /index segments — files named index.yml/index.md
+    publish without the /index suffix on learn.microsoft.com, so both forms are
+    equivalent and should not be treated as different scenarios.
+    """
     if url is None:
         return ''
     u = str(url).strip()
@@ -34,6 +39,8 @@ def _normalize_learn_url(url: str) -> str:
     scheme = parts.scheme.lower()
     netloc = parts.netloc.lower()
     path = parts.path.rstrip('/')
+    if path.lower().endswith('/index'):
+        path = path[:-len('/index')]
     return urlunsplit((scheme, netloc, path, '', ''))
 
 
