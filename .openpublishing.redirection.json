@@ -1,6 +1,21 @@
 {
   "redirections": [
     {
+      "source_path": "docs/guide/management-governance/management-governance-start-here.md",
+      "redirect_url": "/azure/architecture/guide/management-governance/management-governance-get-started",
+      "redirect_document_id": true
+    },
+    {
+      "source_path": "docs/identity/identity-start-here.yml",
+      "redirect_url": "/azure/architecture/identity/identity-get-started",
+      "redirect_document_id": true
+    },
+    {
+      "source_path": "docs/networking/index.md",
+      "redirect_url": "/azure/architecture/networking/get-started",
+      "redirect_document_id": false
+    },
+    {
       "source_path": "docs/industries/automotive/automotive-telemetry-analytics.yml",
       "redirect_url": "/industry/mobility/architecture/ra-mobility-overview",
       "redirect_document_id": false
@@ -3399,6 +3414,11 @@
       "redirect_document_id": true
     },
     {
+      "source_path": "docs/example-scenario/aks-agic/aks-agic.yml",
+      "redirect_url": "/azure/architecture/example-scenario/aks-agic/aks-agc",
+      "redirect_document_id": true
+    },
+    {
       "source_path": "docs/example-scenario/apps/devops-with-aks.yml",
       "redirect_url": "/azure/architecture/guide/aks/aks-cicd-github-actions-and-gitops",
       "redirect_document_id": true
@@ -4707,6 +4727,11 @@
       "source_path": "docs/guide/quantum/devops-for-quantum-computing.yml",
       "redirect_url": "/azure/architecture/guide/devops/devops-start-here",
       "redirect_document_id": false
+    },
+    {
+      "source_path": "docs/guide/devops/devops-start-here.md",
+      "redirect_url": "/azure/architecture/guide/devops/devops-get-started",
+      "redirect_document_id": true      
     },
     {
       "source_path": "docs/data-science-process/agile-development.md",
@@ -7259,7 +7284,7 @@
     },
     {
       "source_path": "docs/guide/resilience/resilience-overview.yml",
-      "redirect_url": "/azure/architecture/identity/identity-start-here",
+      "redirect_url": "/azure/architecture/identity/identity-get-started", 
       "redirect_document_id": false
     },
     {
@@ -7886,6 +7911,11 @@
       "source_path": "docs/solution-ideas/articles/analytics-start-here.yml",
       "redirect_url": "/azure/architecture/solution-ideas/articles/analytics-get-started",
       "redirect_document_id": false
+    },
+    {
+      "source_path": "docs/web-apps/index.md",
+      "redirect_url": "/azure/architecture/web-apps/web-apps-get-started",
+      "redirect_document_id": true
     },
     {
       "source_path": "docs/databases/index.yml",

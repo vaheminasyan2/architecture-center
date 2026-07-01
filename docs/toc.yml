@@ -780,9 +780,9 @@ items:
           - name: Secure AKS workloads with Azure Front Door
             displayName: Azure Kubernetes Service, AFD
             href: example-scenario/aks-front-door/aks-front-door.yml
-          - name: Multitenancy with AKS and AGIC
+          - name: Multitenancy with AKS and AGC
             displayName: Azure Kubernetes Service
-            href: example-scenario/aks-agic/aks-agic.yml
+            href: example-scenario/aks-agic/aks-agc.yml
           - name: Use Azure Kubernetes Service to host GPU-based workloads
             displayName: AKS
             href: reference-architectures/containers/aks-gpu/gpu-aks.md
@@ -883,7 +883,7 @@ items:
           href: example-scenario/mainframe/mainframe-data-replication-azure-rdrs.yml
         - name: Migrate mainframe data tier to Azure with mLogica LIBER*IRIS
           href: example-scenario/mainframe/mainframe-data-replication-azure-data-platform.yml
-        - name: Modernize mainframe midrange data
+        - name: Modernize mainframe and midrange data
           href: example-scenario/mainframe/modernize-mainframe-data-to-azure.yml
         - name: Reengineer mainframe batch apps
           href: example-scenario/mainframe/reengineer-mainframe-batch-apps-azure.yml
@@ -929,7 +929,7 @@ items:
   - name: DevOps
     items:
     - name: Get started
-      href: guide/devops/devops-start-here.md
+      href: guide/devops/devops-get-started.md
     - name: Guides
       items:
       - name: Azure Sandbox
@@ -1026,7 +1026,7 @@ items:
   - name: Identity
     items:
     - name: Get started
-      href: identity/identity-start-here.yml
+      href: identity/identity-get-started.md
     - name: Guides
       items:
       - name: Cross-tenant secure access to apps
@@ -1122,7 +1122,7 @@ items:
   - name: Management + Governance
     items:
     - name: Get started
-      href: guide/management-governance/management-governance-start-here.md
+      href: guide/management-governance/management-governance-get-started.md
     - name: Guides
       items:
       - name: Update Windows VMs in Azure
@@ -1141,7 +1141,7 @@ items:
         - name: Hybrid availability and monitoring
           href: hybrid/hybrid-perf-monitoring.yml
   - name: Networking
-    href: networking/index.md
+    href: networking/get-started.md
   - name: Security
     items:
     - name: Get started
@@ -1229,8 +1229,8 @@ items:
       - name: Esri ArcGIS on Azure Virtual Desktop
         displayName: AVD
         href: example-scenario/data/esri-arcgis-azure-virtual-desktop.yml
-  - name: Web applications
-    href: web-apps/index.md
+  - name: Web apps
+    href: web-apps/web-apps-get-started.md
 - name: Microsoft Azure Well-Architected Framework
   href: /azure/well-architected/
 - name: Cloud Adoption Framework for Azure
