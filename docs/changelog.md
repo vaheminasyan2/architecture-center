@@ -22,7 +22,6 @@ The following new and updated articles have recently been published in the Azure
 
 ### New articles
 
-- [Modern Web App Pattern for .NET](./web-apps/guides/enterprise-app-patterns/modern-web-app/dotnet/guidance.md)
 - [Rate Limiting Pattern](./patterns/rate-limiting-pattern.md)
 - [High Availability for Multitier AKS Applications](./guide/aks/aks-high-availability.md)
 - [SD-WAN Integration with Azure Hub-and-Spoke Network Topologies](./networking/guide/sd-wan-integration-hub-spoke-network-topologies.md)
@@ -136,7 +135,6 @@ The following new and updated articles have recently been published in the Azure
 - [Guidance for Using Azure Database for PostgreSQL in a Multitenant Solution](./guide/multitenant/service/postgresql.md) ([#db7d7eea74](https://github.com/MicrosoftDocs/architecture-center/commit/db7d7eea74))
 - [Choose an Azure Service for Vector Search](./guide/technology-choices/vector-search.md) ([#db7d7eea74](https://github.com/MicrosoftDocs/architecture-center/commit/db7d7eea74))
 - [Deploy IBM Sterling Order Management Software (OMS) on Azure](./reference-architectures/ibm/deploy-ibm-sterling-oms.yml) ([#db7d7eea74](https://github.com/MicrosoftDocs/architecture-center/commit/db7d7eea74))
-- [Reliable Web App Pattern for Java](./web-apps/guides/enterprise-app-patterns/reliable-web-app/java/guidance.md) ([#db7d7eea74](https://github.com/MicrosoftDocs/architecture-center/commit/db7d7eea74))
 - [Azure Data Factory enterprise hardened architecture](./databases/architecture/azure-data-factory-enterprise-hardened.yml) ([#d3087681b9](https://github.com/MicrosoftDocs/architecture-center/commit/d3087681b9))
 
 ## April 2026
@@ -169,7 +167,7 @@ The following new and updated articles have recently been published in the Azure
 - [Hub-Spoke Network Topology in Azure](./networking/architecture/hub-spoke.yml) ([#3276a5fb52](https://github.com/MicrosoftDocs/architecture-center/commit/3276a5fb52))
 - [Deploy Highly Available NVAs](./networking/guide/network-virtual-appliance-high-availability.md) ([#11e7e0144a](https://github.com/MicrosoftDocs/architecture-center/commit/11e7e0144a))
 - [Multitier Web Application Built for High Availability and Disaster Recovery](./example-scenario/infrastructure/multi-tier-app-disaster-recovery.yml) ([#dbd7c4c7af](https://github.com/MicrosoftDocs/architecture-center/commit/dbd7c4c7af))
-- [Access Foundry Models and Other Language Models Through a Gateway](./ai-ml/guide/azure-openai-gateway-guide.yml) ([#12e2a9acd2](https://github.com/MicrosoftDocs/architecture-center/commit/12e2a9acd2))
+- [Access Foundry Models and Other Language Models Through a Gateway](./ai-ml/guide/azure-openai-gateway-guide.md) ([#12e2a9acd2](https://github.com/MicrosoftDocs/architecture-center/commit/12e2a9acd2))
 - [Multitenancy and Azure Cosmos DB](./guide/multitenant/service/cosmos-db.md) ([#d3e5686302](https://github.com/MicrosoftDocs/architecture-center/commit/d3e5686302))
 - [Real-Time Analytics with Azure Service Bus and Microsoft Fabric](./solution-ideas/articles/analytics-service-bus.yml) ([#756841f2f9](https://github.com/MicrosoftDocs/architecture-center/commit/756841f2f9))
 - [Extract and Analyze Call Center Data by Using Azure OpenAI, Speech Services, and Language Services](./ai-ml/openai/architecture/call-center-openai-analytics.yml) ([#0530fe63b4](https://github.com/MicrosoftDocs/architecture-center/commit/0530fe63b4))
